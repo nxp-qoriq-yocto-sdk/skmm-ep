@@ -1,5 +1,4 @@
-# Copyright (c) 2011 Freescale Semiconductor, Inc.
-# All rights reserved.
+# Copyright 2012 Freescale Semiconductor, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -18,7 +17,7 @@
 # Foundation, either version 2 of that License or (at your option) any
 # later version.
 #
-# THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
+# THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor "AS IS" AND ANY
 # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
 # DISCLAIMED. IN NO EVENT SHALL Freescale Semiconductor BE LIABLE FOR ANY
@@ -29,7 +28,13 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SUBDIRS = dma_test pci_test skmm
+bin_PROGRAMS = skmm
 
-# install the SOURCE_THIS file in the 'root' home directory
-SOURCE_THIS_install := root
+AM_CFLAGS := $(LIBEDIT_CFLAGS) -I$(TOP_LEVEL)/apps/skmm/include
+
+skmm_SOURCES := skmm.c abstract_req.c
+skmm_CFLAGS := "-D _FILE_OFFSET_BITS=64"
+skmm_LDADD := common skmm_pci skmm_sec skmm_sram skmm_sec_blob skmm_memmgr \
+	      skmm_uio usdpaa_dma_mem usdpaa_of usdpaa_pci usdpaa_process
+
+skmm_LDFLAGS := $(LIBEDIT_LDFLAGS)

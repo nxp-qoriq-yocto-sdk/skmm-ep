@@ -1,4 +1,4 @@
-# Copyright (c) 2011 Freescale Semiconductor, Inc.
+# Copyright 2012 Freescale Semiconductor, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,21 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SUBDIRS = dma_test pci_test skmm
+lib_LIBRARIES = skmm_common skmm_pci skmm_sec skmm_mem skmm_sec_blob \
+		skmm_memmgr skmm_uio
 
-# install the SOURCE_THIS file in the 'root' home directory
-SOURCE_THIS_install := root
+AM_CFLAGS := $(LIBEDIT_CFLAGS) -I$(TOP_LEVEL)/apps/skmm/include
+
+dist_DATA = 80-sec-uio.rules
+dist_DATA = 81-sram-uio.rules
+
+skmm_common_SOURCES := common.c
+skmm_pci_SOURCES := skmm_pci.c
+skmm_sec_SOURCES := skmm_sec.c
+skmm_sram_SOURCES := skmm_sram.c
+skmm_sec_blob_SOURCES := skmm_sec_blob.c
+skmm_memmgr_SOURCES := skmm_memmgr.c
+skmm_uio_SOURCES := skmm_uio.c
+
+80-sec-uio.rules_install := etc/udev/rules.d
+81-sram-uio.rules_install := etc/udev/rules.d

@@ -30,6 +30,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 MAKEFLAGS += --no-builtin-rules --no-builtin-variables
+PRINT_DEBUG=n
 
 # ----=[ Arch specific definitions ]=----
 ifneq (distclean,$(MAKECMDGOALS))
@@ -77,6 +78,9 @@ CFLAGS		+= -I$(TOP_LEVEL)/include $(addprefix -I,$($(ARCH)_SPEC_INC_PATH))
 CFLAGS		+= -DPACKAGE_VERSION=\"$(shell git describe --always --dirty 2>/dev/null || echo n/a)\"
 CFLAGS		+= $(addprefix -D,$($(ARCH)_SPEC_DEFINE) $(EXTRA_DEFINE))
 CFLAGS		+= $($(ARCH)_SPEC_CFLAGS) $(EXTRA_CFLAGS)
+ifeq ($(PRINT_DEBUG), y)
+CFLAGS		+= -DPRINT_DEBUG
+endif
 LDFLAGS		:= -pthread -lm
 LDFLAGS		+= $(addprefix -L,$(LIB_DIR)) $(addprefix -L,$($(ARCH)_SPEC_LIB_PATH))
 LDFLAGS		+= $($(ARCH)_SPEC_LDFLAGS) $(EXTRA_LDFLAGS)
@@ -87,6 +91,13 @@ INSTALL_SBIN_FLAGS ?= --mode=700
 INSTALL_LIB_FLAGS ?= --mode=644
 INSTALL_OTHER_FLAGS ?= --mode=644
 MAKE_TOUCHFILE := .Makefile.touch
+
+# ---=[ distinguish PCI-e RC endian for skmm ]=---
+ifeq (x86_64,$(HOST))
+	CFLAGS += -DHOST_LE
+else
+	CFLAGS += -DHOST_BE
+endif
 
 #----=[ Control verbosity ]=----
 ifndef V

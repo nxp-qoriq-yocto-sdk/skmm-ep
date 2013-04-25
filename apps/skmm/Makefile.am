@@ -1,5 +1,4 @@
-# Copyright (c) 2011 Freescale Semiconductor, Inc.
-# All rights reserved.
+# Copyright (c) 2012 Freescale Semiconductor, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -29,7 +28,4 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SUBDIRS = dma_test pci_test skmm
-
-# install the SOURCE_THIS file in the 'root' home directory
-SOURCE_THIS_install := root
+SUBDIRS = lib app
