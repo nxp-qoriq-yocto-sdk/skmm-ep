@@ -34,7 +34,12 @@
 
 #include "common.h"
 
+#ifdef C293PCIE
 #define SKMM_EP_PCIe_IDX	0x0
+#endif
+#ifdef P4080DS
+#define SKMM_EP_PCIe_IDX	0x0 /* PCIe1 as EP */
+#endif
 
 /*
  * PCIe setting for EP
@@ -58,10 +63,11 @@
 /*
  * LAW setting for EP
  */
-#define SKMM_EP_TRGT_ID		0x2
-
 #define LAW_SIZE_8G		0x20
 #define LAW_ATR(trgt_id, size)	((1 << 31) | (trgt_id << 20) | size)
+
+#ifdef C293PCIE
+#define SKMM_EP_TRGT_ID		0x2
 
 #define LAW_MAX_NUM		12
 #define LAW_OFFSET		0xc08
@@ -69,6 +75,19 @@
 #define LAW_TRGT_ID_MASK	0x1f
 #define LAWAR_ADDR(base, x) 	((u32 *)base + 8 * x + 2)
 #define LAWBAR_ADDR(base, x) 	((u32 *)base + 8 * x)
+#endif
+
+#ifdef P4080DS
+#define SKMM_EP_TRGT_ID		0x0 /* PCIe1 */
+
+#define LAW_MAX_NUM		32
+#define LAW_OFFSET		0xc00
+#define LAW_TRGT_ID_SHIFT	20
+#define LAW_TRGT_ID_MASK	0xff
+#define LAWAR_ADDR(base, x) 	((u32 *)base + 4 * x + 2)
+#define LAWBARL_ADDR(base, x) 	((u32 *)base + 4 * x + 1)
+#define LAWBARH_ADDR(base, x) 	((u32 *)base + 4 * x)
+#endif
 
 /*
  * PCI Translation Registers

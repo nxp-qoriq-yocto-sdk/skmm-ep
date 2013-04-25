@@ -1315,7 +1315,7 @@ int main(int argc, char *argv[])
 START:
 	fsl_pci_setup_law();
 
-	l2_cursor = (u32) fsl_sram_init();
+	l2_cursor = (u32) fsl_mem_init();
 	p_cursor = l2_cursor + PLATFORM_SRAM_SIZE;
 	p_cursor = ALIGN_TO_L1_CACHE_LINE_REV(p_cursor);
 	p_cursor -= L1_CACHE_LINE_SIZE;

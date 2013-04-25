@@ -40,7 +40,11 @@ dist_DATA = 81-sram-uio.rules
 skmm_common_SOURCES := common.c
 skmm_pci_SOURCES := skmm_pci.c
 skmm_sec_SOURCES := skmm_sec.c
-skmm_sram_SOURCES := skmm_sram.c
+ifdef SKMM_SRAM
+skmm_mem_SOURCES := skmm_sram.c
+else
+skmm_mem_SOURCES := skmm_ddr.c
+endif
 skmm_sec_blob_SOURCES := skmm_sec_blob.c
 skmm_memmgr_SOURCES := skmm_memmgr.c
 skmm_uio_SOURCES := skmm_uio.c

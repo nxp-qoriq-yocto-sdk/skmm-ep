@@ -41,7 +41,12 @@
 	ret; \
 })
 
+#ifdef C293PCIE
 #define CCSR_PHYS_ADDR 		0xfffe00000ull
+#endif
+#ifdef P4080DS
+#define CCSR_PHYS_ADDR 		0xffe000000ull
+#endif
 
 phys_addr_t get_ccsr_phys_addr(void)
 {

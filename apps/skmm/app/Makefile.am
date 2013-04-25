@@ -34,7 +34,7 @@ AM_CFLAGS := $(LIBEDIT_CFLAGS) -I$(TOP_LEVEL)/apps/skmm/include
 
 skmm_SOURCES := skmm.c abstract_req.c
 skmm_CFLAGS := "-D _FILE_OFFSET_BITS=64"
-skmm_LDADD := common skmm_pci skmm_sec skmm_sram skmm_sec_blob skmm_memmgr \
+skmm_LDADD := common skmm_pci skmm_sec skmm_mem skmm_sec_blob skmm_memmgr \
 	      skmm_uio usdpaa_dma_mem usdpaa_of usdpaa_pci usdpaa_process
 
 skmm_LDFLAGS := $(LIBEDIT_LDFLAGS)

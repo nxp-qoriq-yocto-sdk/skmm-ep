@@ -30,65 +30,30 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <common.h>
-#include <skmm_sram.h>
-#include <skmm_uio.h>
+#include <usdpaa/dma_mem.h>
 
-static phys_addr_t sram_phys_addr;
-static va_addr_t sram_virt_addr;
+#define SKMM_TOTAL_DMA_SIZE	(64 * 1024 * 1024)
+#define SKMM_DMA_MAP_SIZE	(1*1024*1024)
 
 inline va_addr_t pa_to_va(phys_addr_t addr)
 {
-	va_addr_t offset;
-
-	offset = (va_addr_t)(addr - sram_phys_addr);
-
-	return sram_virt_addr + offset;
+	return (va_addr_t)__dma_mem_ptov(addr);
 }
 
 inline phys_addr_t va_to_pa(va_addr_t addr)
 {
-	phys_addr_t offset;
-
-	offset = (phys_addr_t)(addr - sram_virt_addr);
-
-	return sram_phys_addr + offset;
+	return (phys_addr_t)__dma_mem_vtop((void *)addr);
 }
 
 va_addr_t *fsl_mem_init(void)
 {
-	char sram_name[NAME_MAX];
-	int sram_fd;
-	u32 sram_size;
-	int ret;
-	u32 map = 0;
-	va_addr_t *sram_addr;
+	/* - map DMA mem */
+	dma_mem_generic = dma_mem_create(DMA_MAP_FLAG_ALLOC, NULL,
+					 SKMM_TOTAL_DMA_SIZE);
+	if (!dma_mem_generic)
+		error(0, -errno, "dma_mem init, continuing\n");
 
-	snprintf(sram_name, sizeof(sram_name), "/dev/fsl-sram");
-	sram_fd = open(sram_name, O_RDWR);
-	if (sram_fd < 0) {
-		error(0, -errno, "no %s\n", sram_name);
-		return NULL;
-	}
-
-	ret = get_map_size(sram_name, map, &sram_size);
-	if (ret < 0)
-		goto err;
-
-	ret = get_map_addr(sram_name, map, &sram_phys_addr);
-	if (ret < 0)
-		goto err;
-
-	sram_addr = mmap(0, sram_size, PROT_READ | PROT_WRITE,MAP_SHARED,\
-			sram_fd, 0);
-	if (sram_addr == NULL) {
-		fprintf(stderr, "mmap: %s\n", strerror(errno));
-		goto err;
-	}
-	sram_virt_addr = (va_addr_t)sram_addr;
-
-	return sram_addr;
-
-err:
-	close(sram_fd);
-	return NULL;
+	/* Allocate stashable memory for the interface object */
+	return (va_addr_t *)
+		__dma_mem_memalign(L1_CACHE_BYTES, SKMM_DMA_MAP_SIZE);
 }

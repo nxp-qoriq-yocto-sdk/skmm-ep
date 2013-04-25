@@ -81,6 +81,13 @@ CFLAGS		+= $($(ARCH)_SPEC_CFLAGS) $(EXTRA_CFLAGS)
 ifeq ($(PRINT_DEBUG), y)
 CFLAGS		+= -DPRINT_DEBUG
 endif
+ifeq ($(MACHINE), c293pcie)
+CFLAGS		+= -DC293PCIE
+SKMM_SRAM	= y
+endif
+ifeq ($(MACHINE), p4080ds)
+CFLAGS		+= -DP4080DS
+endif
 LDFLAGS		:= -pthread -lm
 LDFLAGS		+= $(addprefix -L,$(LIB_DIR)) $(addprefix -L,$($(ARCH)_SPEC_LIB_PATH))
 LDFLAGS		+= $($(ARCH)_SPEC_LDFLAGS) $(EXTRA_LDFLAGS)

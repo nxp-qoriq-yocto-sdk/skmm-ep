@@ -37,7 +37,12 @@
 #include <fcntl.h>
 #include <skmm.h>
 
+#ifdef C293PCIE
 #define SEC_ENG_COUNT		3
+#endif
+#ifdef P4080DS
+#define SEC_ENG_COUNT		1
+#endif
 
 #define	SEC_RNG_OFFSET		0x600
 #define	SEC_KEK_OFFSET		0x400

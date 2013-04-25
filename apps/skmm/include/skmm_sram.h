@@ -36,6 +36,6 @@
 
 inline phys_addr_t va_to_pa(va_addr_t addr);
 inline va_addr_t pa_to_va(phys_addr_t addr);
-va_addr_t *fsl_sram_init(void);
+va_addr_t *fsl_mem_init(void);
 
 #endif /* __SKMM_SRAM_H__ */
