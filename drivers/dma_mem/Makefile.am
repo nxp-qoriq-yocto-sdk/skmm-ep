@@ -29,6 +29,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-lib_LIBRARIES = usdpaa_dma_mem
+lib_LIBRARIES = skmm_dma_mem
 
-usdpaa_dma_mem_SOURCES := setup.c allocator.c map.c
+skmm_dma_mem_SOURCES := setup.c allocator.c map.c

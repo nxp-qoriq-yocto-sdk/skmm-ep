@@ -32,5 +32,5 @@
 bin_PROGRAMS = trigger_msi_ep2rc
 
 trigger_msi_ep2rc_SOURCES := trigger_msi_ep2rc.c
-trigger_msi_ep2rc_LDADD := usdpaa_pci
+trigger_msi_ep2rc_LDADD := skmm_usdpaa_pci
 

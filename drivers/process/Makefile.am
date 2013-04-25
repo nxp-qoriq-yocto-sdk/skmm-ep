@@ -29,6 +29,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-lib_LIBRARIES = usdpaa_process
+lib_LIBRARIES = skmm_process
 
-usdpaa_process_SOURCES := process.c
+skmm_process_SOURCES := process.c

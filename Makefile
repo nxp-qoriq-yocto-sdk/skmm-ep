@@ -35,7 +35,6 @@ PRINT_DEBUG=n
 # ----=[ Arch specific definitions ]=----
 ifneq (distclean,$(MAKECMDGOALS))
  ifeq (powerpc,$(ARCH))
-   CROSS_COMPILE	?= powerpc-linux-gnu-
    $(ARCH)_SPEC_DEFINE	:= _FILE_OFFSET_BITS=64
    $(ARCH)_SPEC_INC_PATH:=
    $(ARCH)_SPEC_LIB_PATH:=
@@ -57,9 +56,6 @@ endif
 
 # ----=[ Tools ]=----
 INSTALL		?= install
-CC		:= $(CROSS_COMPILE)gcc
-LD		:= $(CROSS_COMPILE)ld
-AR		:= $(CROSS_COMPILE)ar
 
 # ----=[ Directories and flags ]=----
 TOP_LEVEL	:= $(shell pwd)
@@ -148,11 +144,15 @@ endef
 # ----=[ Processing Makefile.am input ]=----
 define process_install
 do_install_$(1):$($(1)_install_from)/$($(1)_install_name)
+    ifeq (skmm,$(1))
 	$$(Q)echo " [INSTALL] $(1)"
 	$$(Q)$(INSTALL) $(INSTALL_FLAGS) $($(1)_install_flags) $($(1)_install_from)/$($(1)_install_name) $(DESTDIR)/$($(1)_install_to)/$($(1)_install_name)
+    endif
 do_uninstall_$(1):
+    ifeq (skmm,$(1))
 	$$(Q)echo " [UNINSTALL] $(1)"
 	$$(Q)$(RM) $(DESTDIR)/$($(1)_install_to)/$($(1)_install_name)
+    endif
 
 .PHONY: do_install_$(1) do_uninstall_$(1)
 endef

@@ -31,7 +31,7 @@
 bin_PROGRAMS = dma_test raw_test
 
 dma_test_SOURCES := dma_test.c
-dma_test_LDADD := usdpaa_dma_mem usdpaa_process
+dma_test_LDADD := skmm_dma_mem skmm_process
 dma_test_CFLAGS := $(LIBEDIT_CFLAGS)
 dma_test_LDFLAGS := $(LIBEDIT_LDFLAGS)
 
