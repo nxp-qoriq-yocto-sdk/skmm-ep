@@ -34,6 +34,7 @@
 #include <internal/of.h>
 #include <skmm_pci.h>
 #include <skmm_sram.h>
+#include <usdpaa/pci_ep_vfio.h>
 
 static phys_addr_t pcie_out_win_base;
 
@@ -103,7 +104,7 @@ static void pci_process_of_ranges(const struct device_node *dev)
 
 static void set_inbound_window(ccsr_pci_t *pci, phys_addr_t addr, u32 size)
 {
-	pit_t *pi;
+	pit_t *pi, *pi_mem = NULL;
 	u32 flag = PIWAR_EN | PIWAR_LOCAL | PIWAR_PF |
 			PIWAR_READ_SNOOP | PIWAR_WRITE_SNOOP;
 	u32 block_rev;
@@ -111,12 +112,17 @@ static void set_inbound_window(ccsr_pci_t *pci, phys_addr_t addr, u32 size)
 	block_rev = read_reg(&pci->block_rev1);
 	if (PEX_IP_BLK_REV_2_2 <= block_rev) {
 		pi = &pci->pit[2];	/* 0xDC0 */
+		pi_mem = &pci->pit[1];
 	} else {
 		pi = &pci->pit[3];	/* 0xDE0 */
 	}
 
 	write_reg(&pi->pitar, addr >> 12);
 	write_reg(&pi->piwar, flag | size);
+
+	/* Disable this window used for map all the memory */
+	if (pi_mem)
+		write_reg(&pi_mem->piwar, 0);
 }
 
 static void set_outbound_window(ccsr_pci_t *pci, phys_addr_t addr, u32 size)
@@ -202,6 +208,35 @@ int fsl_pci_init(u32 pci_idx, phys_addr_t in_win_base)
 err:
 	close(fd);
 	return ret;
+}
+
+int fsl_pci_vfio_init(u32 pci_idx, phys_addr_t in_win_base)
+{
+	struct pci_ep *ep;
+	ccsr_pci_t *pci;
+
+	ep = vfio_pci_ep_open(pci_idx, 0, 0);
+	if (!ep)
+		return -EINVAL;
+
+	pcie_out_win_base = ep->ow[PCI_EP_WIN1_INDEX].cpu_addr;
+
+	pci = vfio_pci_ep_map_win(ep, &ep->reg, 0, ep->reg.size);
+
+	print_debug("find PCIe controller %d regs_phy is %llx, \
+			pci_bar_addr is %llx\n", pci_idx,
+			ep->reg.cpu_addr, pcie_out_win_base);
+
+	/* Set outbound and inbound */
+	set_outbound_window(pci, pcie_out_win_base, POWAR_MEM_8G);
+	set_inbound_window(pci, in_win_base, PIWAR_MEM_1M);
+
+	/* for test */
+	/* vfio_pci_ep_info(ep); */
+
+	vfio_pci_ep_close(ep);
+
+	return 0;
 }
 
 phys_addr_t fsl_pci_get_out_win_base(void)

@@ -1340,7 +1340,11 @@ START:
 	/*
 	 * Get the PCIE1 controller  address
 	 */
+#ifdef SKMM_PCI_EP_VFIO
+	fsl_pci_vfio_init(SKMM_EP_PCIe_IDX, va_to_pa(l2_cursor));
+#else
 	fsl_pci_init(SKMM_EP_PCIe_IDX, va_to_pa(l2_cursor));
+#endif
 	pcie_out_win_base = fsl_pci_get_out_win_base();
 	c_mem->p_pci_mem = pcie_out_win_base;
 	print_debug("p_pci_mem: %llx\n", c_mem->p_pci_mem);

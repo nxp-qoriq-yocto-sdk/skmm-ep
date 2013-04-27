@@ -156,6 +156,8 @@ typedef struct ccsr_pci {
 } ccsr_pci_t;
 
 int fsl_pci_init(u32 pci_idx, phys_addr_t in_win_base);
+int fsl_pci_vfio_init(u32 pci_idx, phys_addr_t in_win_base);
+
 int fsl_pci_setup_law(void);
 phys_addr_t fsl_pci_get_out_win_base(void);
 
