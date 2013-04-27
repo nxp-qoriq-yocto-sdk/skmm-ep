@@ -1,4 +1,4 @@
-# Copyright (c) 2011 Freescale Semiconductor, Inc.
+# Copyright 2013 Freescale Semiconductor, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,4 +29,6 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SUBDIRS = process dma_mem of pci pci_ep_vfio
+lib_LIBRARIES = skmm_pci_ep_vfio
+
+skmm_pci_ep_vfio_SOURCES := pci_ep_vfio.c
