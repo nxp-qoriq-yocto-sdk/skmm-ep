@@ -84,6 +84,10 @@ endif
 ifeq ($(MACHINE), p4080ds)
 CFLAGS		+= -DP4080DS
 endif
+ifeq ($(MACHINE), t4240qds)
+CFLAGS		+= -DP4080DS
+endif
+
 LDFLAGS		:= -pthread -lm
 LDFLAGS		+= $(addprefix -L,$(LIB_DIR)) $(addprefix -L,$($(ARCH)_SPEC_LIB_PATH))
 LDFLAGS		+= $($(ARCH)_SPEC_LDFLAGS) $(EXTRA_LDFLAGS)
