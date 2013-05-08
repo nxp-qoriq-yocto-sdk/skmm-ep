@@ -86,6 +86,7 @@ CFLAGS		+= -DP4080DS
 endif
 ifeq ($(MACHINE), t4240qds)
 CFLAGS		+= -DP4080DS
+CFLAGS		+= -DSKMM_PCI_EP_VFIO
 endif
 
 LDFLAGS		:= -pthread -lm
