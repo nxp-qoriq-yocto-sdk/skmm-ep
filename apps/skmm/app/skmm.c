@@ -1305,6 +1305,27 @@ int main(int argc, char *argv[])
 	sec_engine_t *enq_sec = NULL;
 	sec_engine_t *deq_sec = NULL;
 
+	char dev_mtd[NAME_MAX];
+	char key_file[NAME_MAX];
+	u32 update_key = 0;
+
+	if (argc < 2) {
+		printf("Usage: %s <NOR partition> [<update-key>] [<key-file>]",
+				argv[0]);
+		printf("\n");
+		printf("\n\tNOR partitions : NOR flash partition (dev/mtdx)"
+				"to store the encrypted blob");
+		printf("\n\tupdate-key     : Update the key file to NOR flash");
+		printf("\n\tkey-file       : The key file");
+		return EINVAL;
+	}
+
+	strncpy(dev_mtd, argv[1], NAME_MAX);
+	if (argc == 4 && (strncmp(argv[2], "update-key", 10) == 0)) {
+		update_key = 1;
+		strncpy(key_file, argv[3], NAME_MAX);
+	}
+
 	if (of_init()) {
 		pr_err("of_init() failed");
 		exit(EXIT_FAILURE);
@@ -1361,12 +1382,13 @@ START:
 	c_mem->intr_ticks = 0;
 	c_mem->intr_timeout_ticks = usec2ticks(2);
 
-	if ((argc == 3) && (strncmp(argv[1], "update-key", 10) == 0)) {
-		encrypt_priv_key_to_blob(c_mem->rsrc_mem->sec, argv[2]);
+	if (update_key) {
+		encrypt_priv_key_to_blob(c_mem->rsrc_mem->sec, dev_mtd,
+				key_file);
 		return 0;
 	}
 
-	decrypt_priv_key_from_blob(c_mem->rsrc_mem->sec);
+	decrypt_priv_key_from_blob(c_mem->rsrc_mem->sec, dev_mtd);
 
 	c_mem->c_hs_mem->state = DEFAULT;
 	for (i = 0; (DEFAULT == c_mem->c_hs_mem->state); i++)

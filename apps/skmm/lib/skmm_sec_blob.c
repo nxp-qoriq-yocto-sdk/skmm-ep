@@ -44,9 +44,6 @@
 /* The reserved fields of KEY file */
 #define KEY_FILE_HEADER		16
 
-/* MTD partition to store the enctypted blob */
-#define BLOB_KEY_MTD		"/dev/mtd4"
-
 const char key_identify[] = {
 	0XBC, 0xD0, 0X1E, 0XAC, 0XA9, 0X62, 0XBF, 0X5A,
 	0XAF, 0XF3, 0X94, 0X32, 0X19, 0X7D, 0X34, 0X40
@@ -96,7 +93,7 @@ static void *constr_jobdesc_blob_decrypt(struct blob_param *pbp)
 	return desc;
 }
 
-int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec)
+int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd)
 {
 	sec_engine_t *sec = ccsr_sec;
 	int i;
@@ -111,9 +108,9 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec)
 	struct blob_param blob_para;
 	u32 sec_ear;
 
-	fd = open(BLOB_KEY_MTD, O_RDWR);
+	fd = open(dev_mtd, O_RDWR);
 	if (fd < 0) {
-		printf("fail to open %s\n", BLOB_KEY_MTD);
+		printf("fail to open %s\n", dev_mtd);
 		return -ENOENT;
 	}
 	read(fd, head, KEY_FILE_HEADER);
@@ -217,7 +214,8 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec)
 	return 0;
 }
 
-int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char *key_file)
+int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char* dev_mtd,
+				char *key_file)
 {
 	int i;
 	sec_engine_t *sec = ccsr_sec;
@@ -316,17 +314,17 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char *key_file)
 	print_debug("\n");
 
 
-	fd = open(BLOB_KEY_MTD, O_RDWR);
+	fd = open(dev_mtd, O_RDWR);
 	if (fd < 0) {
-		printf("fail to open %s\n", BLOB_KEY_MTD);
+		printf("fail to open %s\n", dev_mtd);
 		return -ENOENT;
 	}
-	print_debug("write blob encrypted to %s\n", BLOB_KEY_MTD);
+	print_debug("write blob encrypted to %s\n", dev_mtd);
 	write(fd, head, KEY_FILE_HEADER);
 	if (write(fd, output_buf, blob_para.output_len) != blob_para.output_len)
-		printf("failed to write encrypted blob to %s\n", BLOB_KEY_MTD);
+		printf("failed to write encrypted blob to %s\n", dev_mtd);
 	else
-		printf("success to write encrypted blob to %s\n", BLOB_KEY_MTD);
+		printf("success to write encrypted blob to %s\n", dev_mtd);
 
 	put_buffer(output_buf);
 	put_buffer(key_buf);

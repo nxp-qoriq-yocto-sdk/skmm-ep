@@ -58,7 +58,8 @@ struct blob_param {
 	u32 output_len;
 };
 
-int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char *key_file);
-int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec);
+int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char *dev_mtd,
+				char *key_file);
+int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd);
 
 #endif /* __SKMM_SEC_BLOB_H__ */
