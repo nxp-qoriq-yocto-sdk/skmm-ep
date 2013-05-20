@@ -97,6 +97,8 @@ typedef u64     dma_addr_t;
 typedef u64	phys_addr_t;
 #endif
 
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
 static inline u32 __read_reg(u32 *p)
 {
 	u32 ret;

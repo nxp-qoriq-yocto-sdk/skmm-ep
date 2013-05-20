@@ -44,10 +44,49 @@
 /* The reserved fields of KEY file */
 #define KEY_FILE_HEADER		16
 
+/* SEC version */
+#define SEC_SECVID_MS_IPID_MASK         0xffff0000
+#define SEC_SECVID_MS_IPID_SHIFT        16
+#define SEC_SECVID_MS_MAJ_REV_MASK      0x0000ff00
+#define SEC_SECVID_MS_MAJ_REV_SHIFT     8
+#define SEC_CCBVID_ERA_MASK             0xff000000
+#define SEC_CCBVID_ERA_SHIFT            24
+
 const char key_identify[] = {
 	0XBC, 0xD0, 0X1E, 0XAC, 0XA9, 0X62, 0XBF, 0X5A,
 	0XAF, 0XF3, 0X94, 0X32, 0X19, 0X7D, 0X34, 0X40
 };
+
+static u8 sec_get_era(ccsr_sec_t *sec)
+{
+	static const struct {
+		u16 ip_id;
+		u8 maj_rev;
+		u8 era;
+	} caam_eras[] = {
+		{0x0A10, 2, 2},	/* P4080 v2 */
+		{0x0A1C, 1, 5}	/* T4240 */
+	};
+
+	u32 secvid_ms = read_reg(&sec->secvid_ms);
+	u32 ccbvid = read_reg(&sec->ccbvid);
+	u16 ip_id = (secvid_ms & SEC_SECVID_MS_IPID_MASK) >>
+				SEC_SECVID_MS_IPID_SHIFT;
+	u8 maj_rev = (secvid_ms & SEC_SECVID_MS_MAJ_REV_MASK) >>
+				SEC_SECVID_MS_MAJ_REV_SHIFT;
+	u8 era = (ccbvid & SEC_CCBVID_ERA_MASK) >> SEC_CCBVID_ERA_SHIFT;
+	int i;
+
+	if (era)	/* This is '0' prior to CAAM ERA-6 */
+		return era;
+
+	for (i = 0; i < ARRAY_SIZE(caam_eras); i++)
+		if (caam_eras[i].ip_id == ip_id &&
+		    caam_eras[i].maj_rev == maj_rev)
+			return caam_eras[i].era;
+
+	return 0;
+}
 
 static void *constr_jobdesc_blob_encrypt(struct blob_param *pbp)
 {
@@ -106,7 +145,7 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd)
 	char head[KEY_FILE_HEADER];
 	u32 *len;
 	struct blob_param blob_para;
-	u32 sec_ear;
+	u8 sec_ear;
 
 	fd = open(dev_mtd, O_RDWR);
 	if (fd < 0) {
@@ -171,8 +210,8 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd)
 
 	constr_jobdesc_blob_decrypt(&blob_para);
 
-	sec_ear = (read_reg(&sec->info->ccbvid) >> 24) & 0xff;
-	if (sec_ear >= 6) {
+	sec_ear = sec_get_era(sec->info);
+	if (sec_ear >= 5) {
 		rng_init_desc = get_buffer(8);
 		*((u32 *)rng_init_desc) = 0xb0800002;
 		*((u32 *)(rng_init_desc + 4)) = 0x82500004;
@@ -184,9 +223,9 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd)
 	sec->jr.i_ring[sec->jr.tail].desc = va_to_pa((va_addr_t)desc_buf);
 	sec->jr.tail = MOD_INC(sec->jr.tail, sec->jr.size);
 
-	out_be32(&(sec->jr.regs->irja), 2);
+	out_be32(&(sec->jr.regs->irja), sec->jr.tail);
 
-	while (in_be32(&sec->jr.regs->orsf) != 2)
+	while (in_be32(&sec->jr.regs->orsf) != sec->jr.tail)
 		;
 
 	print_debug("\n\noriginal data decrypted from blob\n");
@@ -228,7 +267,7 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char* dev_mtd,
 	char head[KEY_FILE_HEADER];
 	u32 *len;
 	struct blob_param blob_para;
-	u32 sec_ear;
+	u8 sec_ear;
 
 	fd = open(key_file, O_RDWR);
 	if (fd < 0) {
@@ -287,8 +326,8 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char* dev_mtd,
 
 	constr_jobdesc_blob_encrypt(&blob_para);
 
-	sec_ear = (read_reg(&sec->info->ccbvid) >> 24) & 0xff;
-	if (sec_ear >= 6) {
+	sec_ear = sec_get_era(sec->info);
+	if (sec_ear >= 5) {
 		rng_init_desc = get_buffer(8);
 		*((u32 *)rng_init_desc) = 0xb0800002;
 		*((u32 *)(rng_init_desc + 4)) = 0x82500004;
@@ -300,9 +339,9 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char* dev_mtd,
 	sec->jr.i_ring[sec->jr.tail].desc = va_to_pa((va_addr_t)desc_buf);
 	sec->jr.tail = MOD_INC(sec->jr.tail, sec->jr.size);
 
-	out_be32(&(sec->jr.regs->irja), 2);
+	out_be32(&(sec->jr.regs->irja), sec->jr.tail);
 
-	while (in_be32(&sec->jr.regs->orsf) != 2)
+	while (in_be32(&sec->jr.regs->orsf) != sec->jr.tail)
 		;
 
 	print_debug("\nafter blob encrypt, output is :\n");
