@@ -67,7 +67,8 @@
 #define LAW_ATR(trgt_id, size)	((1 << 31) | (trgt_id << 20) | size)
 
 #ifdef C293PCIE
-#define SKMM_EP_TRGT_ID		0x2
+#define PCIE_TRGT_ID		0x2
+#define SKMM_EP_TRGT_ID		PCIE_TRGT_ID
 
 #define LAW_MAX_NUM		12
 #define LAW_OFFSET		0xc08
@@ -78,7 +79,13 @@
 #endif
 
 #ifdef P4080DS
-#define SKMM_EP_TRGT_ID		0x0 /* PCIe1 */
+#define PCIE1_TRGT_ID		0x0
+#define PCIE2_TRGT_ID		0x1
+#define PCIE3_TRGT_ID		0x2
+#define PCIE4_TRGT_ID		0x3
+#define RAPIDIO1_TRGT_ID	0x8
+#define RAPIDIO2_TRGT_ID	0x9
+#define SKMM_EP_TRGT_ID		PCIE1_TRGT_ID
 
 #define LAW_MAX_NUM		32
 #define LAW_OFFSET		0xc00

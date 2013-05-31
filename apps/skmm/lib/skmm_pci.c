@@ -262,6 +262,19 @@ int fsl_pci_setup_law(void)
 		    MAP_SHARED, fd, get_ccsr_phys_addr());
 	law = (u32 *)(ccsr + LAW_OFFSET);
 
+#ifdef P4080DS
+	for (i = 0; i < LAW_MAX_NUM; i++) {
+		trgt_id = (read_reg(LAWAR_ADDR(law, i)) >> LAW_TRGT_ID_SHIFT)
+				& LAW_TRGT_ID_MASK;
+
+		/* Clear PCIe and RapidIO LAW setting */
+		if ((trgt_id == PCIE2_TRGT_ID) || (trgt_id == PCIE3_TRGT_ID)
+			|| (trgt_id == PCIE4_TRGT_ID) || (trgt_id == RAPIDIO1_TRGT_ID)
+			|| (trgt_id == RAPIDIO2_TRGT_ID))
+			write_reg(LAWAR_ADDR(law, i), 0);
+	}
+#endif
+
 	for (i = 0; i < LAW_MAX_NUM; i++) {
 		trgt_id = (read_reg(LAWAR_ADDR(law, i)) >> LAW_TRGT_ID_SHIFT)
 				& LAW_TRGT_ID_MASK;
