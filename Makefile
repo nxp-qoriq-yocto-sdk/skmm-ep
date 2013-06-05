@@ -66,8 +66,8 @@ INSTALL_SBIN	?= $(PREFIX)/sbin
 INSTALL_LIB	?= $(PREFIX)/lib
 INSTALL_OTHER	?= $(PREFIX)/etc
 OBJ_DIR		:= objs_$(ARCH)
-BIN_DIR		:= $(TOP_LEVEL)/bin_$(ARCH)
-LIB_DIR		:= $(TOP_LEVEL)/lib_$(ARCH)
+BIN_DIR		:= $(TOP_LEVEL)/bin_$(HOST)
+LIB_DIR		:= $(TOP_LEVEL)/lib_$(HOST)
 CFLAGS		:= -pthread -O2 -Wall
 CFLAGS		+= -Wshadow -Wstrict-prototypes -Wwrite-strings -Wdeclaration-after-statement
 CFLAGS		+= -I$(TOP_LEVEL)/include $(addprefix -I,$($(ARCH)_SPEC_INC_PATH))
@@ -151,7 +151,7 @@ define process_install
 do_install_$(1):$($(1)_install_from)/$($(1)_install_name)
     ifeq (skmm,$(1))
 	$$(Q)echo " [INSTALL] $(1)"
-	$$(Q)$(INSTALL) $(INSTALL_FLAGS) $($(1)_install_flags) $($(1)_install_from)/$($(1)_install_name) $(DESTDIR)/$($(1)_install_to)/$($(1)_install_name)
+	$$(Q)$(INSTALL) $(INSTALL_FLAGS) $($(1)_install_flags) $($(1)_install_from)/$($(1)_install_name) $(DESTDIR)/$($(1)_install_to)/$($(1)_install_name)_$(HOST)
 	$$(Q)echo " [INSTALL] 80-sec-uio.rules"
 	$$(Q)$(INSTALL) $(INSTALL_FLAGS) apps/skmm/lib/80-sec-uio.rules $(DESTDIR)/etc/udev/rules.d/80-sec-uio.rules
 	$$(Q)echo " [INSTALL] 81-sram-uio.rules"
