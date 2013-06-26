@@ -60,18 +60,30 @@
 
 /* Sec engine related macros */
 #define SEC_JR_DEPTH		(128)
-#define DEFAULT_POOL_SIZE	(100 * 1024)
-#define DEFAULT_EP_POOL_SIZE	(100 * 1024)
+#define DEFAULT_POOL_SIZE	(128 * 1024)
+#define DEFAULT_EP_POOL_SIZE	(50 * 1024)
 
 /* Setting the same input buffer pool for all the rings */
 #define COMMON_IP_BUFFER_POOL
+
+#define NON_ACCESS_MEM 0
+#define SEC_ENQ_BUDGET  32
+#define MAX_DEQ_BUDGET  12
+
+#define RINGS_JOBS_ADDED(ring) \
+	(ring->r_s_c_cntrs->jobs_added - ring->cntrs->jobs_processed)
+#define MOD_ADD(x, value, size)	((x + value) & (size - 1))
+
+
 
 #define WAIT_FOR_STATE_CHANGE(x)	{ while (DEFAULT == x) SYNC_MEM }
 #define MIN(x, y)	(x * (x < y) + y * (x >= y))
 #define LINEAR_ROOM(wi, depth, room)	MIN((depth - wi), room)
 #define MOD_INC(x, size)	(((x) + 1) & (size - 1))
 
-#define CMD_RING_SUPPORT
+#define BITS_PER_BYTE	8
+
+#define HIGH_PERF
 #define unlikely(x)	__builtin_expect(!!(x), 0)
 
 static inline void out_be32(u32 *p, u32 v)
@@ -89,8 +101,8 @@ static inline void out_be64(volatile u64 *p, u64 v)
 
 static inline void out_le32(u32 *p, u32 v)
 {
-	 *((volatile u32 *)p) = ((v >> 24) | ((v & 0xff0000) >> 8) | \
-		((v & 0xff00) << 8) | (v << 24));
+	*((volatile u32 *)p) = ((v >> 24) | ((v & 0xff0000) >> 8) |
+			((v & 0xff00) << 8) | (v << 24));
 	__sync_synchronize();
 }
 
@@ -136,9 +148,9 @@ static inline int in_be8(volatile u8 *p)
 #define ASSIGN16(x, y)	out_be16(&x, y)
 #define ASSIGN32(x, y)	out_be32(&x, y)
 #define ASSIGN64(x, y)	{ \
-				out_be32((u32 *)&(x), (u32)(y>>32)); \
-				out_be32((u32 *)((u8*)&(x) + sizeof(u32)), (u32)y); \
-			}
+	out_be32((u32 *)&(x), (u32)(y>>32)); \
+	out_be32((u32 *)((u8 *)&(x) + sizeof(u32)), (u32)y); \
+}
 
 #define ASSIGN8_PTR(x, y)	out_be8(x, y)
 #define ASSIGN16_PTR(x, y)	out_be16(x, y)
@@ -151,9 +163,9 @@ static inline int in_be8(volatile u8 *p)
 #define ASSIGN32(x, y)	out_le32(&x, y)
 
 #define ASSIGN64(x, y)	{ \
-				out_le32(&x, (u32)y); \
-				out_le32(((u8 *)&x + sizeof(u32)), \
-				(u32)(y>>32)); }
+	out_le32(&x, (u32)y); \
+	out_le32(((u8 *)&x + sizeof(u32)), \
+			(u32)(y>>32)); }
 
 #define ASSIGN32_PTR(x, y)	out_le32(x, y)
 #define ASSIGN16_PTR(x, y)	out_le16(x, y)
@@ -168,7 +180,7 @@ static inline int in_be8(volatile u8 *p)
 
 
 #define ALIGN_TO_L1_CACHE_LINE(x)	(((x) + (L1_CACHE_LINE_SIZE - 1))& \
-					~(L1_CACHE_LINE_SIZE-1))
+		~(L1_CACHE_LINE_SIZE-1))
 #define ALIGN_TO_L1_CACHE_LINE_REV(x)   (x & ~(L1_CACHE_LINE_SIZE - 1))
 
 /* Application ring properties */
@@ -191,17 +203,29 @@ static inline int in_be8(volatile u8 *p)
 /*
  *Description : Defines the application ring request entry
  *Fields      : sec_desc  : DMA address of the sec desc
-*/
+ */
 struct req_ring {
 	dma_addr_t desc;
 } __packed;
 typedef struct req_ring req_ring_t;
 
+#define MULTIPLE_RESP_RINGS
+
+#ifdef MULTIPLE_RESP_RINGS
+struct dev_ctx {
+	volatile u8 r_id;
+	volatile u32 wi;
+} __packed;
+
+typedef struct dev_ctx dev_ctx_t;
+#endif
+
+
 /*
  * Description : Defines the application ring response entry
  * Fields      : sec_desc  : DMA address of the sec desc
  *               result    : Result of crypto op from sec engine
-*/
+ */
 struct resp_ring {
 	dma_addr_t desc;
 	u32 result;
@@ -282,6 +306,7 @@ typedef struct ring_shadow_counters_mem {
 typedef struct app_ring_pair {
 	req_ring_t	*req_r;
 	resp_ring_t	*resp_r;
+	u8		*resp_j_done_flag;
 	void		*ip_pool;
 	void		*msi_addr;
 	sec_engine_t		*sec;
@@ -291,12 +316,18 @@ typedef struct app_ring_pair {
 	ring_shadow_counters_mem_t	*r_s_cntrs;
 
 	u8	id;
+	u8	prio;
+	u8	c_link;
+	u8	max_next_link;
 	u8	props;
 	u16	msi_data;
 	u32	depth;
 	u32	intr_ctrl_flag;
+	u32	order_j_d_index;
 
 	struct app_ring_pair *next;
+#define FSL_CRYPTO_MAX_RING_PAIRS   6
+	struct app_ring_pair *rp_links[FSL_CRYPTO_MAX_RING_PAIRS];
 } app_ring_pair_t;
 
 /*
@@ -310,9 +341,11 @@ typedef struct priority_q {
 } priority_q_t;
 
 typedef struct driver_resp_ring {
+	u8      id;
 	u16	msi_data;
 	u16	depth;
 	u32	intr_ctrl_flag;
+	u32     enqcount;
 
 	resp_ring_t	*resp_r;
 	void		*msi_addr;
@@ -321,6 +354,7 @@ typedef struct driver_resp_ring {
 	ring_counters_mem_t		*r_cntrs;
 	ring_counters_mem_t		*r_s_c_cntrs;
 	ring_shadow_counters_mem_t	*r_s_cntrs;
+	void *next;
 } drv_resp_ring_t;
 
 /*
@@ -331,24 +365,33 @@ typedef struct driver_resp_ring {
  *p_q           : Linked list of priority queues created
  */
 typedef struct resource {
-	u8	sec_eng_cnt;
-	u8	ring_count;
+	u8 sec_eng_cnt;
+	u8 ring_count;
+	u8 drv_resp_ring_count;
 
 	void	*req_mem;
 	void	*ip_pool;
+
 	sec_engine_t	*sec;
 	priority_q_t	*p_q;
+
 	app_ring_pair_t	*rps;
+	app_ring_pair_t *orig_rps;
 	app_ring_pair_t	*cmdrp;
 	drv_resp_ring_t	*drv_resp_ring;
 
-	indexes_mem_t		*idxs_mem;
-	ring_counters_mem_t	*r_cntrs_mem;
-	ring_counters_mem_t	*r_s_c_cntrs_mem;
-	counters_mem_t		*cntrs_mem;
-	counters_mem_t		*s_c_cntrs_mem;
-	ring_shadow_counters_mem_t	*r_s_cntrs_mem;
-	shadow_counters_mem_t		*s_cntrs_mem;
+	u32 *intr_ctrl_flags;
+
+	indexes_mem_t *idxs_mem;
+
+	ring_counters_mem_t *r_cntrs_mem;
+	ring_counters_mem_t *r_s_c_cntrs_mem;
+
+	counters_mem_t *cntrs_mem;
+	counters_mem_t *s_c_cntrs_mem;
+
+	ring_shadow_counters_mem_t *r_s_cntrs_mem;
+	shadow_counters_mem_t	   *s_cntrs_mem;
 
 } resource_t;
 
@@ -369,11 +412,13 @@ typedef struct crypto_c_hs_mem {
 		struct c_config_data {
 			u8     num_of_rps;
 			u8     max_pri;
+			u8     num_of_fwresp_rings;
 			u16    req_mem_size;
 			u32    drv_resp_ring;
 			u32    fw_resp_ring;
 			u32    s_cntrs;
 			u32    r_s_cntrs;
+			u32    fw_resp_ring_depth;
 		} config;
 		struct c_ring_data {
 			u8     rid;
@@ -439,6 +484,9 @@ typedef enum handshake_state {
 	FW_INIT_MSI_INFO_COMPLETE,
 	FW_INIT_IDX_MEM_COMPLETE,
 	FW_INIT_COUNTERS_MEM_COMPLETE,
+	FW_INIT_RNG,
+	FW_RNG_COMPLETE
+
 } handshake_state_t;
 
 /* Identifies different commands to be sent to the firmware */
@@ -449,7 +497,9 @@ typedef enum h_handshake_commands {
 	HS_INIT_MSI_INFO,
 	HS_INIT_IDX_MEM,
 	HS_INIT_COUNTERS_MEM,
-	HS_COMPLETE
+	HS_COMPLETE,
+	WAIT_FOR_RNG,
+	RNG_DONE
 } h_handshake_commands_t;
 
 /* Identifies different commands to be sent to the firmware */
@@ -460,6 +510,10 @@ typedef enum fw_handshake_commands {
 	FW_INIT_MSI_INFO,
 	FW_INIT_IDX_MEM,
 	FW_INIT_COUNTERS_MEM,
+	FW_HS_COMPLETE,
+	FW_WAIT_FOR_RNG,
+	FW_RNG_DONE
+
 } fw_handshake_commands_t;
 
 /*
@@ -508,6 +562,9 @@ typedef struct c_mem_layout {
 	u64	intr_ticks;
 	u64	intr_timeout_ticks;
 
+	int dgb_print;
+	int err_print;
+
 } c_mem_layout_t;
 
 /* COMMAND RING STRUCTURE */
@@ -526,6 +583,14 @@ typedef enum commands {
 	RNG_INSTANTIATE
 } commands_t;
 
+typedef enum debug_commands {
+	MD,
+	MW,
+	PRINT1_DEBUG,
+	PRINT1_ERROR,
+} dgb_cmd_type_t;
+
+
 #define MAX_SEC_NO 3
 /* SEC STAT */
 typedef struct fsl_sec_stat {
@@ -542,7 +607,7 @@ typedef struct fsl_sec_stat {
 
 /* DEVICES STAT */
 typedef struct fsl_dev_stat_op {
-	u32 fvversion;
+	u32 fwversion;
 	u32 totalmem;
 	u32 codemem;
 	u32 heapmem;
@@ -582,6 +647,13 @@ typedef struct ping_op {
 	u32 resp;
 } ping_op_t;
 
+typedef struct debug_ip {
+	dgb_cmd_type_t cmd_id;
+	unsigned int address;
+	unsigned int val;
+} debug_ip_t;
+
+
 /*
  *Description : output from the device in repsonse
  *Fields      : ping_op
@@ -599,10 +671,24 @@ union op_buffer {
 typedef union op_buffer op_buffer_t;
 
 /*
+ * Description :   command context
+ * Fields      :   cmd_type
+ * : type of command
+ * cmd_completion    : command completion variable
+ */
+typedef struct cmd_trace_ctx {
+	commands_t cmd_type;
+	u32 result;
+	u32 cmd_completion;
+} cmd_trace_ctx_t;
+
+
+/*
  *Description : output from the device in repsonse of command
  *Fields      : buffer     : output buffer
  */
 struct cmd_op {
+	cmd_trace_ctx_t *cmd_ctx;
 	op_buffer_t buffer;
 } __packed;
 typedef struct cmd_op cmd_op_t;
@@ -621,7 +707,7 @@ struct cmd_ring_req_desc {
 		u32    ring_id;    /* RING ID */
 		u32    sec_id;     /* SEC ENGINE ID */
 		u32    count;      /* COUNT VAR TO CKECK LIVELENESS */
-		u32    sec_desc;   /* dma_addr_t  sec_desc; */
+		debug_ip_t dgb;
 	} ip_info;
 
 	dma_addr_t cmd_op;

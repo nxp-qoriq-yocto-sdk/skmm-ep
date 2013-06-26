@@ -29,7 +29,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SUBDIRS = dma_test pci_test skmm
+SUBDIRS = pci_test skmm
 
 # install the SOURCE_THIS file in the 'root' home directory
 SOURCE_THIS_install := root

@@ -30,7 +30,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 MAKEFLAGS += --no-builtin-rules --no-builtin-variables
-PRINT_DEBUG=n
+PRINT_DEBUG=y
 
 # ----=[ Arch specific definitions ]=----
 ifneq (distclean,$(MAKECMDGOALS))

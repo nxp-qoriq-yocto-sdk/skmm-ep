@@ -193,6 +193,7 @@ typedef struct sec_engine {
 	rng_regs_t *rng;
 	kek_regs_t *kek;
 	u32        *scfg;
+	u32        *rdsta;
 	sec_jr_t   jr;
 
 	struct sec_engine *next;

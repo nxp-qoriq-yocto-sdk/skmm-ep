@@ -162,6 +162,7 @@ static int map_sec(sec_engine_t *sec)
 	sec->kek = (kek_regs_t *)((u32)sec->info + SEC_KEK_OFFSET);
 	sec->scfg = (u32 *)((u32)sec->info + SEC_SCFG_OFFSET);
 	sec->rng = (rng_regs_t *)((u32)sec->info + SEC_RNG_OFFSET);
+	sec->rdsta = (u32 *)((u32)sec->info + 0x6c0);
 	init_rng(sec);
 
 	return 0;
