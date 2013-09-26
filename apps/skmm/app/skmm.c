@@ -53,6 +53,7 @@ static void firmware_up(c_mem_layout_t *mem)
 			(u32) mem->p_pci_mem);
 	ASSIGN32(mem->h_hs_mem->data.device.p_ob_mem_base_h,
 			(u32) (mem->p_pci_mem >> 32));
+	mem->h_hs_mem->data.device.no_secs = (u32) mem->rsrc_mem->sec_eng_cnt;
 
 	ASSIGN8(mem->h_hs_mem->state, FIRMWARE_UP);
 
@@ -429,10 +430,12 @@ static void alloc_rsrc_mem(c_mem_layout_t *c_mem, u32 *pcursor, u32 *l2cursor)
 	sec_engine_t *sec = NULL;
 	i32 i            = 0;
 	u32 sec_nums     = 0;
+	void *local_pool;
 
 	print_debug("\n alloc_rsrc_mem\n");
 	print_debug("\t rsrc addr :%p\n", rsrc);
 
+	local_pool = (void *)(l2_cursor + TOTAL_CARD_MEMORY);
 	memset((u8 *)rsrc, 0, sizeof(resource_t));
 
 	sec_nums = fsl_sec_get_eng_num();
@@ -468,7 +471,18 @@ static void alloc_rsrc_mem(c_mem_layout_t *c_mem, u32 *pcursor, u32 *l2cursor)
 	memset(rsrc->ip_pool, 0, DEFAULT_POOL_SIZE);
 	l2_cursor += ALIGN_TO_L1_CACHE_LINE(DEFAULT_POOL_SIZE);
 	c_mem->free_mem -= (DEFAULT_POOL_SIZE);
+
 	print_debug("\t	ip pool addr: %p\n", rsrc->ip_pool);
+	print_debug("\t free memory: %d\n", c_mem->free_mem);
+
+	rsrc->ep_pool = local_pool;
+
+	memset(rsrc->ep_pool, 0, DEFAULT_EP_POOL_SIZE);
+	reg_mem_pool(rsrc->ep_pool, DEFAULT_EP_POOL_SIZE);
+
+	print_debug("\t	ep pool addr: %p\n", rsrc->ep_pool);
+	print_debug("\t free memory: %d\n", c_mem->free_mem);
+
 #endif
 	*l2cursor = l2_cursor;
 	*pcursor  = p_cursor;
@@ -484,7 +498,6 @@ static inline u32 sel_sec_enqueue(c_mem_layout_t *c_mem, sec_engine_t **psec,
 	u64 sec_sel	= 0;
 	u32 secroom	= 0;
 	u32 wi		= 0;
-
 	u32 ri		= rp->idxs->r_index;
 	u32 sec_cnt	= c_mem->rsrc_mem->sec_eng_cnt;
 
@@ -606,8 +619,6 @@ static inline u32 sec_dequeue(c_mem_layout_t *c_mem, sec_engine_t **deq_sec,
 	u32 wi = 0;
 	u32 ri = jr->head;
 	app_ring_pair_t *resp_ring = NULL;
-	dev_ctx_t *ctx = NULL;
-	u32 rid = 0;
 	u32 ret_cnt = 0;
 
 	if (!cnt) {
@@ -616,32 +627,17 @@ static inline u32 sec_dequeue(c_mem_layout_t *c_mem, sec_engine_t **deq_sec,
 	}
 
 	while (cnt) {
-		/*ctx = (dev_ctx_t *) ((u32)jr->o_ring[ri].desc - 32);*/
-		ctx = (dev_ctx_t *)pa_to_va(((u64)jr->o_ring[ri].desc - 32));
-		rid = ctx->r_id;
-
-		resp_ring = &(c_mem->rsrc_mem->orig_rps[rid]);
-
+		resp_ring = (c_mem->rsrc_mem->orig_rps);
 		room =	resp_ring->depth -
 			(resp_ring->cntrs->jobs_added -
 			resp_ring->r_s_c_cntrs->jobs_processed);
 		if (!room)
 			return ret_cnt;
-
-		if (ctx->wi) {
-			/* For order response driver will request with a write
-			 * index id.If an unorder response comes from sec we
-			 * need to wait till next order response is comming
-			 */
-			inorder_dequeue(resp_ring, jr, ri, ctx->wi);
-		} else {
-			wi = resp_ring->idxs->w_index;
-			deq_cpy(&(resp_ring->resp_r[wi]), &jr->o_ring[ri], 1);
-			resp_ring->idxs->w_index =
-					MOD_ADD(wi, 1, resp_ring->depth);
-			resp_ring->cntrs->jobs_added += 1;
-		}
-
+		wi = resp_ring->idxs->w_index;
+		deq_cpy(&(resp_ring->resp_r[wi]), &jr->o_ring[ri], 1);
+		resp_ring->idxs->w_index =
+				MOD_ADD(wi, 1, resp_ring->depth);
+		resp_ring->cntrs->jobs_added += 1;
 		ri = MOD_ADD(ri, 1, jr->size);
 		jr->head = ri;
 		jr->deq_cnt += 1;
@@ -1187,37 +1183,78 @@ out:
 }
 #endif
 
-inline void enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp, u32 count)
+static inline void raise_intr_app_ring(app_ring_pair_t *r)
+{
+	print_debug("%s( ): MSI addr : %p, MSI data :%0x\n",
+			__func__, r->msi_addr, r->msi_data);
+	r->intr_ctrl_flag = 1;
+	out_le16(r->msi_addr, r->msi_data);
+}
+
+inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
+			app_ring_pair_t *resp, u32 *count)
 {
 	i32 i = 0, ri = 0, wi = 0, jrdepth = jr->size, rpdepth = rp->depth;
+	i32 rps_wi = 0, rpsdepth = resp->depth;
+	u32 cnt = *count;
+	phys_addr_t desc;
+	int sw_cnt = 0;
+
 	ri = rp->idxs->r_index;
 	wi = jr->tail;
+	rps_wi = resp->idxs->w_index;
 
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < cnt; i++) {
 		print_debug("%s():Adding desc : %llx from ri: %d to sec at wi: %d\n",
 			__func__, rp->req_r[ri].desc, ri, wi);
 
-		jr->i_ring[wi].desc = rp->req_r[ri].desc;
+		desc = parse_abs_to_desc(rp->req_r[ri].desc);
+		if (desc == 0)
+			break;
+		if (desc == SKMM_SW_REQ) {
+			if (parse_abs_to_sw_req(rp->req_r[ri].desc)) {
+				resp->resp_r[rps_wi].desc = rp->req_r[ri].desc;
+				resp->resp_r[rps_wi].result = 0;
+				sw_cnt++;
+				rps_wi = (rps_wi + 1) & ~rpsdepth;
+				continue;
+			}
+		}
+
+		jr->i_ring[wi].desc = desc;
 		ri = (ri+1) & ~rpdepth;
 		wi = (wi+1) & ~jrdepth;
 	}
 	rp->idxs->r_index = ri;
 	jr->tail          = wi;
+
+	*count = i;
+
+	if (sw_cnt) {
+		resp->cntrs->jobs_added  +=  sw_cnt;
+		resp->r_s_cntrs->resp_jobs_added = resp->cntrs->jobs_added;
+		resp->idxs->w_index = rps_wi;
+		raise_intr_app_ring(resp);
+	}
+
+	return sw_cnt;
 }
 
 
 static inline u32 enqueue_to_sec(sec_engine_t **sec,
-				app_ring_pair_t *rp, u32 cnt)
+				app_ring_pair_t *rp,
+				app_ring_pair_t *resp, u32 cnt)
 {
 	sec_engine_t *psec = *sec;
 	u32 secroom = in_be32(&(psec->jr.regs->irsa));
 	u32 room    = MIN(MIN(secroom, cnt), SEC_ENQ_BUDGET);
+	u32 sw_cnt;
 
 	if (!secroom)
 		goto RET;
 
-	enq_circ_cpy(&(psec->jr), rp, room);
-	out_be32(&(psec->jr.regs->irja), room);
+	sw_cnt = enq_circ_cpy(&(psec->jr), rp, resp, &room);
+	out_be32(&(psec->jr.regs->irja), room - sw_cnt);
 	rp->cntrs->jobs_processed += room;
 	rp->r_s_cntrs->req_jobs_processed = rp->cntrs->jobs_processed;
 
@@ -1238,7 +1275,8 @@ inline void ceq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *r, u32 count)
 	for (i = 0; i < count; i++) {
 		print_debug("%s( ): Dequeued desc : %0llx from ri: %d storing at wi: %d\n",
 				__func__, jr->o_ring[ri].desc, ri, wi);
-		r->resp_r[wi].desc   = jr->o_ring[ri].desc;
+		r->resp_r[wi].desc   = get_abs_req(jr->o_ring[ri].desc);
+		free_resource(jr->o_ring[ri].desc);
 		r->resp_r[wi].result = jr->o_ring[ri].status;
 		wi =  (wi + 1) & ~(rdepth);
 		ri =  (ri + 1) & ~(jrdepth);
@@ -1265,13 +1303,13 @@ static inline u32 dequeue_from_sec(sec_engine_t **sec, app_ring_pair_t **r)
 	u32 secroom     = 0;
 	u32 room        = 0;
 
-	print_debug("%s( ): secroom: %d, respring:%d resproom: %d, room : %d\n",
-			__func__, secroom, pr->id, resproom, room);
-
 	secroom = in_be32(&(psec->jr.regs->orsf));
 	resproom = pr->depth -
 		(pr->cntrs->jobs_added - pr->r_s_c_cntrs->jobs_processed);
 	room = MIN(MIN(secroom, resproom), MAX_DEQ_BUDGET);
+
+	print_debug("%s( ): secroom: %d, respring:%d resproom: %d, room : %d\n",
+			__func__, secroom, pr->id, resproom, room);
 
 	if (!secroom)
 		goto SECCHANGE;
@@ -1289,15 +1327,6 @@ RESPCHANGE:
 	*r = pr->next;
 RET:
 	return room;
-}
-
-
-static inline void raise_intr_app_ring(app_ring_pair_t *r)
-{
-	print_debug("%s( ): MSI addr : %p, MSI data :%0x\n",
-			__func__, r->msi_addr, r->msi_data);
-	r->intr_ctrl_flag = 1;
-	out_le16(r->msi_addr, r->msi_data);
 }
 
 static inline void check_intr(app_ring_pair_t *r, u32 deq, u32 *processedcount)
@@ -1361,7 +1390,7 @@ LOOP:
 	totcount += cnt;
 
 	/* Enqueue jobs to sec engine */
-	enqueue_to_sec(&enq_sec, rp, cnt);
+	enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
 DEQ:
 	if (!totcount)
 		goto NEXTRING;
@@ -1719,6 +1748,12 @@ static void handshake(c_mem_layout_t *mem, u32 *cursor)
 	}
 }
 
+extern void blob_for_test(void);
+extern void dsa_blob(void);
+extern void ecdsa_blob(void);
+extern void dh_blob(void);
+extern void ecdh_blob(void);
+
 int main(int argc, char *argv[])
 {
 	u32 l2_cursor = 0;
@@ -1765,12 +1800,12 @@ START:
 	fsl_pci_setup_law();
 
 	l2_cursor = (u32) fsl_mem_init();
-	p_cursor = l2_cursor + PLATFORM_SRAM_SIZE;
+	p_cursor = l2_cursor + TOTAL_CARD_MEMORY;
 	p_cursor = ALIGN_TO_L1_CACHE_LINE_REV(p_cursor);
 	p_cursor -= L1_CACHE_LINE_SIZE;
 
 	c_mem = (c_mem_layout_t *)(p_cursor - sizeof(c_mem_layout_t));
-	c_mem->free_mem = TOTAL_CARD_MEMORY;
+	c_mem->free_mem = TOTAL_CARD_MEMORY - L1_CACHE_LINE_SIZE;
 	print_debug("c_mem :%p\n", c_mem);
 
 	/*
@@ -1804,13 +1839,12 @@ START:
 	c_mem->rsrc_mem = (resource_t *) (p_cursor);
 	alloc_rsrc_mem(c_mem, &p_cursor , &l2_cursor);
 	/*alloc_rsrc_mem(c_mem, &l2_cursor);*/
-
 	/*
 	 * Init the intr time counters
 	 */
 	c_mem->intr_ticks = 0;
 	c_mem->intr_timeout_ticks = usec2ticks(2);
-
+/*
 	if (update_key) {
 		encrypt_priv_key_to_blob(c_mem->rsrc_mem->sec, dev_mtd,
 			key_file);
@@ -1818,6 +1852,12 @@ START:
 	}
 
 	decrypt_priv_key_from_blob(c_mem->rsrc_mem->sec, dev_mtd);
+*/
+	blob_for_test();
+	dsa_blob();
+	ecdsa_blob();
+	dh_blob();
+	ecdh_blob();
 
 	c_mem->c_hs_mem->state = DEFAULT;
 	for (i = 0; (DEFAULT == c_mem->c_hs_mem->state); i++)
@@ -1860,7 +1900,7 @@ START:
 	print_debug("v_msi_mem: %0llx\n", (u64)c_mem->v_msi_mem);
 
 	c_mem->c_hs_mem->state = DEFAULT;
-	handshake(c_mem, &l2_cursor);
+	handshake(c_mem, &p_cursor);
 	if ((NULL == c_mem->rsrc_mem->p_q)
 			|| (NULL == c_mem->rsrc_mem->p_q->ring)) {
 		perror("Nothing to process....");

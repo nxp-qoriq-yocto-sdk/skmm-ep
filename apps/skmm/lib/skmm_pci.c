@@ -286,6 +286,8 @@ int fsl_pci_setup_law(void)
 					LAW_SIZE_8G));
 		read_reg(LAWAR_ADDR(law, i));
 		munmap(ccsr, 0x1000);
+		close(fd);
+		print_debug("pci law setup complete\n");
 		return 0;
 	}
 

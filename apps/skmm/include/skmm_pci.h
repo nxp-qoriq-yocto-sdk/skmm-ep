@@ -58,7 +58,7 @@
 #define PIWAR_LOCAL		0x00f00000
 #define PIWAR_READ_SNOOP	0x00050000
 #define PIWAR_WRITE_SNOOP	0x00005000
-#define PIWAR_MEM_1M		0x00000011
+#define PIWAR_MEM_1M		0x00000013
 
 /*
  * LAW setting for EP
@@ -69,10 +69,12 @@
 #ifdef C293PCIE
 #define PCIE_TRGT_ID		0x2
 #define SKMM_EP_TRGT_ID		PCIE_TRGT_ID
+#define PLATFORM_SRAM_TRGT_ID	0x0a
 
 #define LAW_MAX_NUM		12
 #define LAW_OFFSET		0xc08
 #define LAW_TRGT_ID_SHIFT	20
+#define LAW_BAR_SHIFT		12
 #define LAW_TRGT_ID_MASK	0x1f
 #define LAWAR_ADDR(base, x) 	((u32 *)base + 8 * x + 2)
 #define LAWBAR_ADDR(base, x) 	((u32 *)base + 8 * x)

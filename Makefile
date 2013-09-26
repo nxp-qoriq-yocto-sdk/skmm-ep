@@ -30,7 +30,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 MAKEFLAGS += --no-builtin-rules --no-builtin-variables
-PRINT_DEBUG=y
+PRINT_DEBUG=n
 
 # ----=[ Arch specific definitions ]=----
 ifneq (distclean,$(MAKECMDGOALS))
@@ -66,14 +66,15 @@ INSTALL_SBIN	?= $(PREFIX)/sbin
 INSTALL_LIB	?= $(PREFIX)/lib
 INSTALL_OTHER	?= $(PREFIX)/etc
 OBJ_DIR		:= objs_$(ARCH)
-BIN_DIR		:= $(TOP_LEVEL)/bin_$(HOST)
-LIB_DIR		:= $(TOP_LEVEL)/lib_$(HOST)
+BIN_DIR		:= $(TOP_LEVEL)/bin
+LIB_DIR		:= $(TOP_LEVEL)/lib
 CFLAGS		:= -pthread -O2 -Wall
 CFLAGS		+= -Wshadow -Wstrict-prototypes -Wwrite-strings -Wdeclaration-after-statement
 CFLAGS		+= -I$(TOP_LEVEL)/include $(addprefix -I,$($(ARCH)_SPEC_INC_PATH))
 CFLAGS		+= -DPACKAGE_VERSION=\"$(shell git describe --always --dirty 2>/dev/null || echo n/a)\"
 CFLAGS		+= $(addprefix -D,$($(ARCH)_SPEC_DEFINE) $(EXTRA_DEFINE))
 CFLAGS		+= $($(ARCH)_SPEC_CFLAGS) $(EXTRA_CFLAGS)
+
 ifeq ($(PRINT_DEBUG), y)
 CFLAGS		+= -DPRINT_DEBUG
 endif
@@ -99,13 +100,6 @@ INSTALL_SBIN_FLAGS ?= --mode=700
 INSTALL_LIB_FLAGS ?= --mode=644
 INSTALL_OTHER_FLAGS ?= --mode=644
 MAKE_TOUCHFILE := .Makefile.touch
-
-# ---=[ distinguish PCI-e RC endian for skmm ]=---
-ifeq (x86_64,$(HOST))
-	CFLAGS += -DHOST_LE
-else
-	CFLAGS += -DHOST_BE
-endif
 
 #----=[ Control verbosity ]=----
 ifndef V
@@ -151,7 +145,7 @@ define process_install
 do_install_$(1):$($(1)_install_from)/$($(1)_install_name)
     ifeq (skmm,$(1))
 	$$(Q)echo " [INSTALL] $(1)"
-	$$(Q)$(INSTALL) $(INSTALL_FLAGS) $($(1)_install_flags) $($(1)_install_from)/$($(1)_install_name) $(DESTDIR)/$($(1)_install_to)/$($(1)_install_name)_$(HOST)
+	$$(Q)$(INSTALL) $(INSTALL_FLAGS) $($(1)_install_flags) $($(1)_install_from)/$($(1)_install_name) $(DESTDIR)/$($(1)_install_to)/$($(1)_install_name)
 	$$(Q)echo " [INSTALL] 80-sec-uio.rules"
 	$$(Q)$(INSTALL) $(INSTALL_FLAGS) apps/skmm/lib/80-sec-uio.rules $(DESTDIR)/etc/udev/rules.d/80-sec-uio.rules
 	$$(Q)echo " [INSTALL] 81-sram-uio.rules"

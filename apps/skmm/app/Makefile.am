@@ -32,9 +32,10 @@ bin_PROGRAMS = skmm
 
 AM_CFLAGS := $(LIBEDIT_CFLAGS) -I$(TOP_LEVEL)/apps/skmm/include
 
-skmm_SOURCES := skmm.c abstract_req.c
+skmm_SOURCES := skmm.c abstract_req.c rsa.c dsa.c ecdsa.c dh.c ecdh.c \
 skmm_CFLAGS := "-D _FILE_OFFSET_BITS=64"
 skmm_LDADD := skmm_common skmm_pci skmm_sec skmm_mem skmm_sec_blob skmm_memmgr \
-	      skmm_uio skmm_pci_ep_vfio skmm_dma_mem skmm_of skmm_process
+	      skmm_uio skmm_pci_ep_vfio skmm_dma_mem skmm_of skmm_process \
+	      skmm_cache
 
-skmm_LDFLAGS := $(LIBEDIT_LDFLAGS)
+skmm_LDFLAGS := $(LIBEDIT_LDFLAGS) -lcrypto

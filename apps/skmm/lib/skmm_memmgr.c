@@ -267,13 +267,13 @@ void *reg_mem_pool(void *buf, u32 len)
 	print_debug("\t Len     :%d\n", len);
 
 	if (len < MIN_QUANT_SIZE) {
-		perror("Cannot register a buffer less the quant size\n");
+		print_debug("Cannot register a buffer less the quant size\n");
 		return NULL;
 	}
 
 	pool = malloc(sizeof(bp));
 	if (!pool) {
-		perror("Mem allocation for pool failed\n");
+		print_debug("Mem allocation for pool failed\n");
 		goto error;
 	}
 
@@ -332,8 +332,8 @@ void *get_buffer(u32 len)
 
 	f_node = pool->free_list;
 	if (!f_node) {
-		perror("No free buffers to allocate ...  ");
-		printf("Avail mem: %d\n", pool->tot_free_mem);
+		print_debug("No free buffers to allocate ...  ");
+		print_debug("Avail mem: %d\n", pool->tot_free_mem);
 		spin_unlock_bh(&(pool->mem_lock));
 		return NULL;
 	}
@@ -352,19 +352,20 @@ void *get_buffer(u32 len)
 	f_node = first_fit(pool, len);
 
 	if (!f_node) {
-		perror("No free node has mem ...");
-		printf("asked :%d tot mem avail :%d\n",	len, pool->tot_free_mem);
+		print_debug("No free node has mem ...");
+		print_debug("asked :%d tot mem avail :%d\n",
+				len, pool->tot_free_mem);
 		goto error;
 	}
 
 	if (f_node->in_use == 1) {
-		perror("Free nod is in use....\n");
+		print_debug("Free nod is in use....\n");
 		spin_unlock_bh(&(pool->mem_lock));
 		return NULL;
 	}
 
-	if (len == f_node->len
-			|| ((f_node->len - len) < (MIN_QUANT_SIZE + sizeof(bh)))) {
+	if (len == f_node->len ||
+		((f_node->len - len) < (MIN_QUANT_SIZE + sizeof(bh)))) {
 		print_debug("Giving the free node itself... Asked len   :%d,"
 				"f node len :%d\n",  len, f_node->len);
 

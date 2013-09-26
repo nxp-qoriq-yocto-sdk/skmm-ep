@@ -30,7 +30,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 lib_LIBRARIES = skmm_common skmm_pci skmm_sec skmm_mem skmm_sec_blob \
-		skmm_memmgr skmm_uio
+		skmm_memmgr skmm_uio skmm_cache
 
 AM_CFLAGS := $(LIBEDIT_CFLAGS) -I$(TOP_LEVEL)/apps/skmm/include
 
@@ -42,6 +42,7 @@ skmm_pci_SOURCES := skmm_pci.c
 skmm_sec_SOURCES := skmm_sec.c
 ifdef SKMM_SRAM
 skmm_mem_SOURCES := skmm_sram.c
+skmm_cache_SOURCES := skmm_cache.c
 else
 skmm_mem_SOURCES := skmm_ddr.c
 endif

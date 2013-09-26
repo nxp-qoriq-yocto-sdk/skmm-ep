@@ -56,12 +56,13 @@
  * also in the same way logically.
  */
 #define L2_SRAM_SIZE		(256 * 1024)
-#define PLATFORM_SRAM_SIZE	(256 * 1024)
+#define PLATFORM_SRAM_SIZE	(512 * 1024)
+#define L2_SRAM_ADDR		0xfffd00000
 
 /* Sec engine related macros */
 #define SEC_JR_DEPTH		(128)
-#define DEFAULT_POOL_SIZE	(128 * 1024)
-#define DEFAULT_EP_POOL_SIZE	(50 * 1024)
+#define DEFAULT_POOL_SIZE	(384 * 1024 + 120 * 1024)
+#define DEFAULT_EP_POOL_SIZE	(256 * 1024)
 
 /* Setting the same input buffer pool for all the rings */
 #define COMMON_IP_BUFFER_POOL
@@ -142,36 +143,10 @@ static inline int in_be8(volatile u8 *p)
 	return ret;
 }
 
-#ifdef HOST_BE
-
-#define ASSIGN8(x, y)	out_be8(&x, y)
-#define ASSIGN16(x, y)	out_be16(&x, y)
-#define ASSIGN32(x, y)	out_be32(&x, y)
-#define ASSIGN64(x, y)	{ \
-	out_be32((u32 *)&(x), (u32)(y>>32)); \
-	out_be32((u32 *)((u8 *)&(x) + sizeof(u32)), (u32)y); \
-}
-
-#define ASSIGN8_PTR(x, y)	out_be8(x, y)
-#define ASSIGN16_PTR(x, y)	out_be16(x, y)
-#define ASSIGN32_PTR(x, y)	out_be32(x, y)
-
-#else
-
-#define ASSIGN8(x, y)	out_be8(&x, y)
-#define ASSIGN16(x, y)	out_le16(&x, y)
-#define ASSIGN32(x, y)	out_le32(&x, y)
-
-#define ASSIGN64(x, y)	{ \
-	out_le32(&x, (u32)y); \
-	out_le32(((u8 *)&x + sizeof(u32)), \
-			(u32)(y>>32)); }
-
-#define ASSIGN32_PTR(x, y)	out_le32(x, y)
-#define ASSIGN16_PTR(x, y)	out_le16(x, y)
-#define ASSIGN8_PTR(x, y)	out_be8(x, y)
-
-#endif
+#define ASSIGN8(x, y)  ((x) = (u8)(y))
+#define ASSIGN16(x, y) ((x) = (u16)(y))
+#define ASSIGN32(x, y) ((x) = (u32)(y))
+#define ASSIGN64(x, y) ((x) = (u64)(y))
 
 /* Device cache line related definitions */
 #define L1_CACHE_LINE_SIZE_SHIFT	6
@@ -371,6 +346,7 @@ typedef struct resource {
 
 	void	*req_mem;
 	void	*ip_pool;
+	void	*ep_pool;
 
 	sec_engine_t	*sec;
 	priority_q_t	*p_q;
@@ -449,6 +425,7 @@ typedef struct fsl_h_mem_handshake {
 			u32    p_ib_mem_base_h;
 			u32    p_ob_mem_base_l;
 			u32    p_ob_mem_base_h;
+			u32     no_secs;
 		} device;
 		struct config_data {
 			u32	s_r_cntrs;

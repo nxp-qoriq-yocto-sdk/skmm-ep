@@ -29,99 +29,64 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef	__COMMON_H__
-#define	__COMMON_H__
 
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
+#include <common.h>
+#include <skmm_cache.h>
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <pthread.h>
-#include <limits.h>
-#include <error.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-
-#ifdef PRINT_DEBUG
-#define _DEBUG  1
-#else
-#define _DEBUG  0
-#endif
-
-#define debug_cond(cond, fmt, args...)	\
-	do {				\
-		if (cond)		\
-		printf(fmt, ##args);	\
-	} while (0)
-
-#define print_debug(fmt, args...)	\
-	debug_cond(_DEBUG, fmt, ##args)
-
-#ifdef PRINT_ERROR
-#define print_error	printf
-#else
-#define print_error
-#endif
-
-typedef unsigned char		u8;
-typedef unsigned short		u16;
-typedef unsigned int		u32;
-typedef unsigned long long	u64;
-
-typedef char			i8;
-typedef short			i16;
-typedef int			i32;
-typedef unsigned long		i64;
-
-#define __packed	__attribute__((__packed__))
-
-#define DEV_VIRT_ADDR_32BIT
-#ifdef DEV_VIRT_ADDR_32BIT
-typedef u32	va_addr_t;
-
-#else
-typedef u64	va_addr_t;
-
-#endif
-
-#ifdef	DEV_PHYS_ADDR_32BIT
-typedef	u32	dma_addr_t;
-typedef u32	phys_addr_t;
-#else
-typedef u64     dma_addr_t;
-typedef u64	phys_addr_t;
-#endif
-
-#ifndef ARRAY_SIZE
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
-#endif
-
-static inline u32 __read_reg(u32 *p)
+int fsl_init_l2ctrl(phys_addr_t sram_addr, u32 sram_size)
 {
-	u32 ret;
+	int fd;
+	void *ccsr;
+	struct mpc85xx_l2ctlr *l2ctlr;
+	unsigned char ways;
+	unsigned int ctl_reg;
 
-	ret = *(volatile u32 *)(p);
-	__sync_synchronize();
-	return ret;
+	fd = open("/dev/mem", O_RDWR);
+	if (fd < 0) {
+		error(0, -errno, "fail to open /dev/mem\n");
+		return -ENODEV;
+	}
+
+	ccsr = mmap(NULL, 0x100000, PROT_READ | PROT_WRITE,
+		    MAP_SHARED, fd, get_ccsr_phys_addr());
+	l2ctlr = (struct mpc85xx_l2ctlr *)(ccsr + L2_CTRL_OFFSET);
+
+	ways = LOCK_WAYS_FULL * sram_size / L2_CACHE_SIZE;
+
+	/* Write bits[0-17] to srbar0 */
+	write_reg(&l2ctlr->srbar0,
+		lower_32_bits(sram_addr) & L2SRAM_BAR_MSK_LO18);
+	/* Write bits[18-21] to srbare0 */
+	write_reg(&l2ctlr->srbarea0,
+		upper_32_bits(sram_addr) & L2SRAM_BARE_MSK_HI4);
+
+	ctl_reg = read_reg(&l2ctlr->ctl);
+	ctl_reg &= ~L2CR_L2E;
+	ctl_reg |= L2CR_L2FI;
+	write_reg(&l2ctlr->ctl, ctl_reg);
+
+	ctl_reg = read_reg(&l2ctlr->ctl);
+	ctl_reg |= L2CR_L2E | L2CR_L2FI;
+	switch (ways) {
+	case LOCK_WAYS_EIGHTH:
+		ctl_reg |= L2CR_SRAM_EIGHTH;
+		break;
+
+	case LOCK_WAYS_TWO_EIGHTH:
+		ctl_reg |= L2CR_SRAM_QUART;
+		break;
+
+	case LOCK_WAYS_HALF:
+		ctl_reg |= L2CR_SRAM_HALF;
+		break;
+
+	case LOCK_WAYS_FULL:
+	default:
+		ctl_reg |= L2CR_SRAM_FULL;
+		break;
+	}
+
+	write_reg(&l2ctlr->ctl, ctl_reg);
+
+	return 0;
 }
-
-static inline void __write_reg(u32 *p, u32 v)
-{
-	*(volatile u32 *)(p) = v;
-	__sync_synchronize();
-}
-
-#define read_reg	__read_reg
-#define write_reg	__write_reg
-
-inline u64 getticks(void);
-unsigned long get_tbclk(void);
-unsigned long usec2ticks(unsigned long usec);
-phys_addr_t get_ccsr_phys_addr(void);
-
-#endif /* __COMMON_H__ */
