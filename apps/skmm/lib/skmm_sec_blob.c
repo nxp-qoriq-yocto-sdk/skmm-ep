@@ -31,6 +31,7 @@
  */
 
 #include <skmm_sec_blob.h>
+#include <abstract_req.h>
 
 /* Blob header and MAC length */
 #define BLOB_KEY_HEADER		32
@@ -40,6 +41,7 @@
 #define RSA_PRI3_LEN_512	(32 * 5)
 #define RSA_PRI3_LEN_1024	(64 * 5)
 #define RSA_PRI3_LEN_2048	(128 * 5)
+#define RSA_PRI3_LEN_4096	(256 * 5)
 
 /* The reserved fields of KEY file */
 #define KEY_FILE_HEADER		16
@@ -56,37 +58,6 @@ const char key_identify[] = {
 	0XBC, 0xD0, 0X1E, 0XAC, 0XA9, 0X62, 0XBF, 0X5A,
 	0XAF, 0XF3, 0X94, 0X32, 0X19, 0X7D, 0X34, 0X40
 };
-
-static u8 sec_get_era(ccsr_sec_t *sec)
-{
-	static const struct {
-		u16 ip_id;
-		u8 maj_rev;
-		u8 era;
-	} caam_eras[] = {
-		{0x0A10, 2, 2},	/* P4080 v2 */
-		{0x0A1C, 1, 5}	/* T4240 */
-	};
-
-	u32 secvid_ms = read_reg(&sec->secvid_ms);
-	u32 ccbvid = read_reg(&sec->ccbvid);
-	u16 ip_id = (secvid_ms & SEC_SECVID_MS_IPID_MASK) >>
-				SEC_SECVID_MS_IPID_SHIFT;
-	u8 maj_rev = (secvid_ms & SEC_SECVID_MS_MAJ_REV_MASK) >>
-				SEC_SECVID_MS_MAJ_REV_SHIFT;
-	u8 era = (ccbvid & SEC_CCBVID_ERA_MASK) >> SEC_CCBVID_ERA_SHIFT;
-	int i;
-
-	if (era)	/* This is '0' prior to CAAM ERA-6 */
-		return era;
-
-	for (i = 0; i < ARRAY_SIZE(caam_eras); i++)
-		if (caam_eras[i].ip_id == ip_id &&
-		    caam_eras[i].maj_rev == maj_rev)
-			return caam_eras[i].era;
-
-	return 0;
-}
 
 static void *constr_jobdesc_blob_encrypt(struct blob_param *pbp)
 {
@@ -132,50 +103,67 @@ static void *constr_jobdesc_blob_decrypt(struct blob_param *pbp)
 	return desc;
 }
 
-int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd)
+static void mount_key_dir(void)
+{
+	int ret;
+
+	ret = system("mount -t jffs2 /dev/mtdblock4 .key");
+	if (ret < 0) {
+		printf("ret :%d\n", ret);
+		exit(0);
+	}
+}
+
+static void umount_key_dir(void)
+{
+	int ret;
+
+	ret = system("umount .key");
+	if (ret < 0) {
+		printf("ret :%d\n", ret);
+		exit(0) ;
+	}
+}
+
+int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, int type)
 {
 	sec_engine_t *sec = ccsr_sec;
 	int i;
 	void *input_buf;
 	void *desc_buf;
 	void *key_buf;
-	void *output_buf;
-	void *rng_init_desc;
+	void *output_buf = NULL;
+	void *rng_init_desc = NULL;
 	int fd;
 	char head[KEY_FILE_HEADER];
-	u32 *len;
+	char *key_file;
+	char rsa_key_file[] = RSA_KEY_FILE;
+	char dsa_key_file[] = DSA_KEY_FILE;
+	u32 len = 0;
 	struct blob_param blob_para;
-	u8 sec_ear;
+	u32 rm = 0;
 
-	fd = open(dev_mtd, O_RDWR);
+	if (type == BLOB_RSA)
+		key_file = rsa_key_file;
+	if (type == BLOB_DSA)
+		key_file = dsa_key_file;
+
+	mount_key_dir();
+
+	fd = open(key_file, O_RDWR);
 	if (fd < 0) {
-		printf("fail to open %s\n", dev_mtd);
-		return -ENOENT;
+		print_debug("fail to open %s\n", key_file);
+		goto out_blob;
 	}
 	read(fd, head, KEY_FILE_HEADER);
 
-	len = (u32 *)head;
-	switch (*len) {
-	case 512:
-		blob_para.input_len = BLOB_KEY_HEADER + RSA_PRI3_LEN_512
-					+ BLOB_MAC;
-		break;
-	case 1024:
-		blob_para.input_len = BLOB_KEY_HEADER + RSA_PRI3_LEN_1024
-					+ BLOB_MAC;
-		break;
-	case 2048:
-		blob_para.input_len = BLOB_KEY_HEADER + RSA_PRI3_LEN_2048
-					+ BLOB_MAC;
-		break;
-	default:
-		printf("Invalid RSA key length %d\n", *len);
-		return -EINVAL;
-	}
+	if (type == BLOB_RSA)
+		len = get_rsa_keys_size();
+
+	blob_para.input_len = len + (BLOB_KEY_HEADER + BLOB_MAC);
 
 	/* add another 128 byte for priv3 tmp1 and tmp2 */
-	blob_para.output_len = blob_para.input_len - (BLOB_KEY_HEADER + BLOB_MAC)
-				+ (RSA_PRI3_LEN_1024 / 5) * 2;
+	blob_para.output_len = blob_para.input_len - BLOB_KEY_HEADER - BLOB_MAC;
 	blob_para.key_idnfr_len = sizeof(key_identify);
 
 	output_buf = get_buffer(blob_para.output_len);
@@ -192,41 +180,23 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd)
 	read(fd, input_buf, blob_para.input_len);
 	close(fd);
 
-	print_debug("blob data to decrypt\n");
-	for (i = 0; i < blob_para.input_len; i++) {
-		if (i % 8 == 0)
-			print_debug("\n");
-		print_debug("0x%02x    ", *((unsigned char *)(input_buf + i)));
-	}
-	print_debug("\n");
-
-	print_debug("\nbefore blob decrypt, output is :\n");
-	for (i = 0; i < blob_para.output_len; i++) {
-		if (i % 8 == 0)
-			print_debug("\n");
-		print_debug("0x%02x    ", *((unsigned char *)(output_buf + i)));
-	}
-	print_debug("\n");
+	while (sec->jr.head * 8 != in_be32(&sec->jr.regs->irri))
+		;
 
 	constr_jobdesc_blob_decrypt(&blob_para);
 
-	sec_ear = sec_get_era(sec->info);
-	if (sec_ear >= 5) {
-		rng_init_desc = get_buffer(8);
-		*((u32 *)rng_init_desc) = 0xb0800002;
-		*((u32 *)(rng_init_desc + 4)) = 0x82500004;
-
-		sec->jr.i_ring[sec->jr.tail].desc = va_to_pa((va_addr_t)rng_init_desc);
-		sec->jr.tail = MOD_INC(sec->jr.tail, sec->jr.size);
-	}
-
 	sec->jr.i_ring[sec->jr.tail].desc = va_to_pa((va_addr_t)desc_buf);
 	sec->jr.tail = MOD_INC(sec->jr.tail, sec->jr.size);
+	rm++;
 
-	out_be32(&(sec->jr.regs->irja), sec->jr.tail);
+	out_be32(&(sec->jr.regs->irja), rm);
 
-	while (in_be32(&sec->jr.regs->orsf) != sec->jr.tail)
+	while (in_be32(&sec->jr.regs->orsf) != rm)
 		;
+
+	out_be32(&sec->jr.regs->orjr, rm);
+
+	sec->jr.head = sec->jr.tail;
 
 	print_debug("\n\noriginal data decrypted from blob\n");
 	for (i = 0; i < blob_para.output_len; i++) {
@@ -236,66 +206,45 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd)
 	}
 	print_debug("\n");
 
+	put_buffer(rng_init_desc);
 	put_buffer(key_buf);
 	put_buffer(desc_buf);
 	put_buffer(input_buf);
 
-	if (blob_para.output_len == 320 + 128)
-		for (i = 0; i < 7; i++) {
-			(key_info + i)->len = 64;
-			(key_info + i)->data = output_buf + 64 * i;
-			(key_info + i)->p_data = va_to_pa((va_addr_t)output_buf)
-				+ 64 * i;
-		}
+out_blob:
+	if (type == BLOB_RSA)
+		assign_rsa_key(output_buf);
 
 	fsl_sec_init(sec);
+
+	umount_key_dir();
 
 	return 0;
 }
 
-int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char* dev_mtd,
-				char *key_file)
+
+int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, const char *key_file,
+				char *key, int len)
 {
-	int i;
+	int i, wlen;
 	sec_engine_t *sec = ccsr_sec;
 	void *input_buf;
 	void *desc_buf;
 	void *key_buf;
 	void *output_buf;
-	void *rng_init_desc;
-	int fd;
-	char head[KEY_FILE_HEADER];
-	u32 *len;
+	int fd, rm = 0;
 	struct blob_param blob_para;
-	u8 sec_ear;
+	u8 head[KEY_FILE_HEADER];
+	u32 *key_len = (u32 *)head;
 
-	fd = open(key_file, O_RDWR);
-	if (fd < 0) {
-		printf("fail to open %s\n", key_file);
-		return -ENOENT;
-	}
-	read(fd, head, KEY_FILE_HEADER);
+	blob_para.input_len = len;
 
-	len = (u32 *)head;
-	switch (*len) {
-	case 512:
-		blob_para.input_len = RSA_PRI3_LEN_512;
-		break;
-	case 1024:
-		blob_para.input_len = RSA_PRI3_LEN_1024;
-		break;
-	case 2048:
-		blob_para.input_len = RSA_PRI3_LEN_2048;
-		break;
-	default:
-		printf("Invalid RSA key length %d\n", *len);
-		return -EINVAL;
-	}
+	*key_len = blob_para.input_len;
 
 	blob_para.output_len = BLOB_KEY_HEADER + blob_para.input_len + BLOB_MAC;
 	blob_para.key_idnfr_len = sizeof(key_identify);
 
-	input_buf = get_buffer(blob_para.input_len);
+	input_buf = key;
 	desc_buf = get_buffer(sizeof(struct blob_desc));
 	key_buf = get_buffer(sizeof(key_identify));
 	output_buf = get_buffer(blob_para.output_len);
@@ -306,9 +255,8 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char* dev_mtd,
 	blob_para.output = va_to_pa((va_addr_t)output_buf);
 
 	memcpy(key_buf, key_identify, sizeof(key_identify));
-	read(fd, input_buf, blob_para.input_len);
-	close(fd);
-	print_debug("blob data to encrypt\n");
+
+	print_debug("\nbefore blob encrypt, input is :\n");
 	for (i = 0; i < blob_para.input_len; i++) {
 		if (i % 8 == 0)
 			print_debug("\n");
@@ -316,59 +264,59 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char* dev_mtd,
 	}
 	print_debug("\n");
 
-	print_debug("\nbefore blob encrypt, output is :\n");
-	for (i = 0; i < blob_para.output_len; i++) {
-		if (i % 8 == 0)
-			print_debug("\n");
-		print_debug("0x%02x    ", *((unsigned char *)(output_buf + i)));
-	}
-	print_debug("\n");
-
 	constr_jobdesc_blob_encrypt(&blob_para);
 
-	sec_ear = sec_get_era(sec->info);
-	if (sec_ear >= 5) {
-		rng_init_desc = get_buffer(8);
-		*((u32 *)rng_init_desc) = 0xb0800002;
-		*((u32 *)(rng_init_desc + 4)) = 0x82500004;
-
-		sec->jr.i_ring[sec->jr.tail].desc = va_to_pa((va_addr_t)rng_init_desc);
-		sec->jr.tail = MOD_INC(sec->jr.tail, sec->jr.size);
-	}
-
+	print_debug("out: %d, in: %d\n", in_be32(&sec->jr.regs->orsf),
+			in_be32(&sec->jr.regs->irja));
+	while (sec->jr.head * 8 != in_be32(&sec->jr.regs->irri))
+		;
 	sec->jr.i_ring[sec->jr.tail].desc = va_to_pa((va_addr_t)desc_buf);
 	sec->jr.tail = MOD_INC(sec->jr.tail, sec->jr.size);
+	rm++;
 
-	out_be32(&(sec->jr.regs->irja), sec->jr.tail);
+	out_be32(&(sec->jr.regs->irja), rm);
 
-	while (in_be32(&sec->jr.regs->orsf) != sec->jr.tail)
+	while (in_be32(&sec->jr.regs->orsf) != rm)
 		;
 
-	print_debug("\nafter blob encrypt, output is :\n");
-	for (i = 0; i < blob_para.output_len; i++) {
-		if (i % 8 == 0)
-			print_debug("\n");
-		print_debug("0x%02x    ", *((unsigned char *)(output_buf + i)));
-	}
-	print_debug("\n");
+	out_be32(&sec->jr.regs->orjr, rm);
 
+	print_debug("id: %d, sec->jr.head:%d sec->jr.tail %d\n",
+					sec->id, sec->jr.head,
+			sec->jr.tail);
+	sec->jr.head = sec->jr.tail;
 
-	fd = open(dev_mtd, O_RDWR);
+	mount_key_dir();
+
+	fd = open(key_file, O_RDWR);
 	if (fd < 0) {
-		printf("fail to open %s\n", dev_mtd);
-		return -ENOENT;
+		print_debug("fail to open %s\n", key_file);
+		fd = open(key_file, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+		if (fd < 0) {
+			printf("fail to creat %s\n", key_file);
+			return -ENOENT;
+		}
 	}
-	print_debug("write blob encrypted to %s\n", dev_mtd);
-	write(fd, head, KEY_FILE_HEADER);
-	if (write(fd, output_buf, blob_para.output_len) != blob_para.output_len)
-		printf("failed to write encrypted blob to %s\n", dev_mtd);
-	else
-		printf("success to write encrypted blob to %s\n", dev_mtd);
 
+	print_debug("write blob encrypted to %s\n", key_file);
+	wlen = write(fd, head, KEY_FILE_HEADER);
+	if (wlen != KEY_FILE_HEADER)
+		print_debug("write header lengh: %d\n", wlen);
+
+	wlen = write(fd, output_buf, blob_para.output_len);
+	if (wlen != blob_para.output_len)
+		printf("failed to write encrypted blob to %s %d\n",
+				key_file, wlen);
+	else
+		print_debug("success to write encrypted blob to %s\n",
+					key_file);
+
+	close(fd);
 	put_buffer(output_buf);
 	put_buffer(key_buf);
 	put_buffer(desc_buf);
-	put_buffer(input_buf);
 
-	return 0;
+	umount_key_dir();
+
+	return 1;
 }

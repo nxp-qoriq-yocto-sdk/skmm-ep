@@ -58,8 +58,15 @@ struct blob_param {
 	u32 output_len;
 };
 
-int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, char *dev_mtd,
-				char *key_file);
-int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, char *dev_mtd);
+int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, const char *key_file,
+				char *key, int len);
+int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, int type);
+
+#define BLOB_RSA 0
+
+#define RSA_KEY_FILE ".key/rsa.key"
+
+void assign_rsa_key(void *buf);
+
 
 #endif /* __SKMM_SEC_BLOB_H__ */

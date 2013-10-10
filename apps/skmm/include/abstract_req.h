@@ -1978,4 +1978,7 @@ int constr_keygen_desc(struct req_info *req_info);
 phys_addr_t get_abs_req(phys_addr_t desc);
 void free_resource(phys_addr_t desc);
 
+
+int get_rsa_keys_size(void);
+
 #endif /* __ABSTRACT_REQ_H__ */

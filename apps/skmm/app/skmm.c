@@ -40,6 +40,7 @@
 #include <abstract_req.h>
 #include <skmm_sec_blob.h>
 #include <usdpaa/of.h>
+#include <sys/stat.h>
 
 static void firmware_up(c_mem_layout_t *mem)
 {
@@ -628,16 +629,19 @@ static inline u32 sec_dequeue(c_mem_layout_t *c_mem, sec_engine_t **deq_sec,
 
 	while (cnt) {
 		resp_ring = (c_mem->rsrc_mem->orig_rps);
+
 		room =	resp_ring->depth -
 			(resp_ring->cntrs->jobs_added -
 			resp_ring->r_s_c_cntrs->jobs_processed);
 		if (!room)
 			return ret_cnt;
+
 		wi = resp_ring->idxs->w_index;
 		deq_cpy(&(resp_ring->resp_r[wi]), &jr->o_ring[ri], 1);
 		resp_ring->idxs->w_index =
 				MOD_ADD(wi, 1, resp_ring->depth);
 		resp_ring->cntrs->jobs_added += 1;
+
 		ri = MOD_ADD(ri, 1, jr->size);
 		jr->head = ri;
 		jr->deq_cnt += 1;
@@ -646,6 +650,7 @@ static inline u32 sec_dequeue(c_mem_layout_t *c_mem, sec_engine_t **deq_sec,
 			resp_ring->cntrs->jobs_added;
 
 		out_be32(&jr->regs->orjr, 1);
+		print_debug("remove one\n");
 		*todeq -= 1;
 
 		--cnt;
@@ -1198,7 +1203,9 @@ inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
 	i32 rps_wi = 0, rpsdepth = resp->depth;
 	u32 cnt = *count;
 	phys_addr_t desc;
-	int sw_cnt = 0;
+	u32 sw_cnt = 0;
+
+	print_debug("%s(): id: %d\n", __func__, jr->id);
 
 	ri = rp->idxs->r_index;
 	wi = jr->tail;
@@ -1217,6 +1224,8 @@ inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
 				resp->resp_r[rps_wi].result = 0;
 				sw_cnt++;
 				rps_wi = (rps_wi + 1) & ~rpsdepth;
+				ri = (ri+1) & ~rpdepth;
+				wi = jr->tail;
 				continue;
 			}
 		}
@@ -1237,6 +1246,10 @@ inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
 		raise_intr_app_ring(resp);
 	}
 
+	print_debug("sw cnt :%d, sum cnt :%d\n", sw_cnt, i);
+	print_debug("sec id: %d hw desc :%llx index: %d\n",
+			jr->id, jr->i_ring[wi].desc, wi);
+
 	return sw_cnt;
 }
 
@@ -1248,33 +1261,37 @@ static inline u32 enqueue_to_sec(sec_engine_t **sec,
 	sec_engine_t *psec = *sec;
 	u32 secroom = in_be32(&(psec->jr.regs->irsa));
 	u32 room    = MIN(MIN(secroom, cnt), SEC_ENQ_BUDGET);
-	u32 sw_cnt;
+	u32 sw_cnt = 0;
 
 	if (!secroom)
 		goto RET;
 
 	sw_cnt = enq_circ_cpy(&(psec->jr), rp, resp, &room);
-	out_be32(&(psec->jr.regs->irja), room - sw_cnt);
+	print_debug("hw cnt %d\n", room - sw_cnt);
+	out_be32(&(psec->jr.regs->irja), (room - sw_cnt));
 	rp->cntrs->jobs_processed += room;
 	rp->r_s_cntrs->req_jobs_processed = rp->cntrs->jobs_processed;
 
 RET:
 	*sec = psec->next;
-	return room;
+	return room - sw_cnt;
 }
 
 inline void ceq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *r, u32 count)
 {
 	i32 i = 0, wi = 0, ri = 0, jrdepth = jr->size, rdepth = r->depth;
 
-	print_debug("%s( ) cnt: %d\n", __func__, count);
+	print_debug("%s( ) cnt: %d id: %d\n", __func__, count, jr->id);
 	wi = r->idxs->w_index;
 	ri = jr->head;
 
 	print_debug("%s( ): Wi: %d, ri: %d\n", __func__, wi, ri);
 	for (i = 0; i < count; i++) {
-		print_debug("%s( ): Dequeued desc : %0llx from ri: %d storing at wi: %d\n",
+		print_debug("%s( ): Dequeued desc : %0llx from ri: %d"
+				"storing at wi: %d\n",
 				__func__, jr->o_ring[ri].desc, ri, wi);
+		print_debug("sec id: %d hw desc :%llx index: %d\n",
+				jr->id, jr->o_ring[ri].desc, ri);
 		r->resp_r[wi].desc   = get_abs_req(jr->o_ring[ri].desc);
 		free_resource(jr->o_ring[ri].desc);
 		r->resp_r[wi].result = jr->o_ring[ri].status;
@@ -1387,10 +1404,9 @@ LOOP:
 		goto DEQ;
 
 	print_debug("%s( ): Count of jobs added %d\n", __func__, cnt);
-	totcount += cnt;
 
 	/* Enqueue jobs to sec engine */
-	enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
+	totcount += enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
 DEQ:
 	if (!totcount)
 		goto NEXTRING;
@@ -1748,11 +1764,11 @@ static void handshake(c_mem_layout_t *mem, u32 *cursor)
 	}
 }
 
-extern void blob_for_test(void);
 extern void dsa_blob(void);
 extern void ecdsa_blob(void);
 extern void dh_blob(void);
 extern void ecdh_blob(void);
+sec_engine_t *blob_sec;
 
 int main(int argc, char *argv[])
 {
@@ -1766,26 +1782,7 @@ int main(int argc, char *argv[])
 	phys_addr_t p_addr = 0;
 	phys_addr_t p_aligned_addr = 0;
 
-	char dev_mtd[NAME_MAX];
-	char key_file[NAME_MAX];
-	u32 update_key = 0;
-
-	if (argc < 2) {
-		print_debug("Usage: %s <NOR partition> [<update-key>] [<key-file>]",
-				argv[0]);
-		print_debug("\n");
-		print_debug("\n\tNOR partitions : NOR flash partition (dev/mtdx)"
-				"to store the encrypted blob");
-		print_debug("\n\tupdate-key     : Update the key file to NOR flash");
-		print_debug("\n\tkey-file       : The key file");
-		return EINVAL;
-	}
-
-	strncpy(dev_mtd, argv[1], NAME_MAX);
-	if (argc == 4 && (strncmp(argv[2], "update-key", 10) == 0)) {
-		update_key = 1;
-		strncpy(key_file, argv[3], NAME_MAX);
-	}
+	mkdir(".key", S_IRUSR | S_IWUSR);
 
 	if (of_init()) {
 		pr_err("of_init() failed");
@@ -1844,20 +1841,13 @@ START:
 	 */
 	c_mem->intr_ticks = 0;
 	c_mem->intr_timeout_ticks = usec2ticks(2);
-/*
-	if (update_key) {
-		encrypt_priv_key_to_blob(c_mem->rsrc_mem->sec, dev_mtd,
-			key_file);
-		return 0;
-	}
+	blob_sec = c_mem->rsrc_mem->sec;
 
-	decrypt_priv_key_from_blob(c_mem->rsrc_mem->sec, dev_mtd);
-*/
-	blob_for_test();
 	dsa_blob();
 	ecdsa_blob();
 	dh_blob();
 	ecdh_blob();
+
 
 	c_mem->c_hs_mem->state = DEFAULT;
 	for (i = 0; (DEFAULT == c_mem->c_hs_mem->state); i++)
@@ -1906,6 +1896,8 @@ START:
 		perror("Nothing to process....");
 		return -1;
 	}
+
+	decrypt_priv_key_from_blob(c_mem->rsrc_mem->sec, BLOB_RSA);
 
 #ifdef HIGH_PERF
 	ring_processing_perf(c_mem);

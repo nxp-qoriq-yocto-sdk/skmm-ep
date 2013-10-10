@@ -74,6 +74,7 @@ phys_addr_t parse_abs_to_desc(phys_addr_t req)
 	req_info.sec_desc = &sec_desc;
 	req_info.abs_req = abs_req;
 
+	print_debug(" abs request %p\n", abs_req);
 	switch (abs_req->abs_req_id) {
 	case SKMM_RSA_KEYGEN:
 		return SKMM_SW_REQ;

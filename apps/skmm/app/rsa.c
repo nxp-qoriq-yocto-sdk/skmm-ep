@@ -34,7 +34,7 @@
 #include <skmm.h>
 #include <skmm_memmgr.h>
 #include <abstract_req.h>
-
+#include <skmm_sec_blob.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -55,24 +55,18 @@ enum {
 	priv3_dp_1024,
 	priv3_dq_1024,
 	priv3_c_1024,
-	priv3_tmp1_1024,
-	priv3_tmp2_1024,
 
 	priv3_p_2048,
 	priv3_q_2048,
 	priv3_dp_2048,
 	priv3_dq_2048,
 	priv3_c_2048,
-	priv3_tmp1_2048,
-	priv3_tmp2_2048,
 
 	priv3_p_4096,
 	priv3_q_4096,
 	priv3_dp_4096,
 	priv3_dq_4096,
 	priv3_c_4096,
-	priv3_tmp1_4096,
-	priv3_tmp2_4096,
 };
 
 #ifdef PRINT_DEBUG
@@ -456,16 +450,6 @@ struct key_info key_info[] = {
 	},
 
 	{
-		.name = priv3_tmp1_1024,
-		.len = sizeof(P_1024),
-	},
-
-	{
-		.name = priv3_tmp2_1024,
-		.len = sizeof(Q_1024),
-	},
-
-	{
 		.name = priv3_p_2048,
 		.data = (u8 *)P_2048,
 		.len = sizeof(P_2048),
@@ -493,16 +477,6 @@ struct key_info key_info[] = {
 		.name = priv3_c_2048,
 		.data = (u8 *)C_2048,
 		.len = sizeof(C_2048),
-	},
-
-	{
-		.name = priv3_tmp1_2048,
-		.len = sizeof(P_2048),
-	},
-
-	{
-		.name = priv3_tmp2_2048,
-		.len = sizeof(Q_2048),
 	},
 
 	{
@@ -534,41 +508,17 @@ struct key_info key_info[] = {
 		.data = (u8 *)C_4096,
 		.len = sizeof(C_4096),
 	},
-
-	{
-		.name = priv3_tmp1_4096,
-		.data = (u8 *)P_4096,
-		.len = sizeof(P_4096),
-	},
-
-	{
-		.name = priv3_tmp2_4096,
-		.data = (u8 *)Q_4096,
-		.len = sizeof(Q_4096),
-	}
 };
 
-void blob_for_test(void)
+int get_rsa_keys_size(void)
 {
-	u32 len = 0, i;
-	u8 *key_buf;
+	int len = 0, i;
 
 	for (i = 0; i < ARRAY_SIZE(key_info); i++)
 		len += key_info[i].len;
-	print_debug("private key length:%d\n", len);
 
-	key_buf = get_buffer(len);
-	if (!key_buf) {
-		print_debug("no buffer\n");
-		return;
-	}
-	for (i = 0; i < ARRAY_SIZE(key_info); i++) {
-		if (key_info[i].data)
-			memcpy(key_buf, key_info[i].data, key_info[i].len);
-		print_debug("key_buf :%p\n", key_buf);
-		key_info[i].p_data = va_to_pa((va_addr_t)key_buf);
-		key_buf += key_info[i].len;
-	}
+	print_debug("%s len :%d\n", __func__, len);
+	return len;
 }
 
 static void get_key(struct key_info *key)
@@ -891,9 +841,13 @@ int ret_pub_key(struct rsa_keygen *rsa_keygen, RSA *rsa)
 	return 1;
 }
 
+
+extern sec_engine_t *blob_sec;
+static void *key_buf_start;
+
 int rsa_keygen_sw(struct rsa_keygen *rsa_keygen)
 {
-	int num;
+	int num, ret = 1;
 	unsigned long f4 = RSA_F4;
 	struct keygen_buf *buf, buffer;
 
@@ -922,7 +876,45 @@ int rsa_keygen_sw(struct rsa_keygen *rsa_keygen)
 	BN_bn2bin(rsa->iqmp, buf->c);
 	ret_pub_key(rsa_keygen, rsa);
 
+	ret = encrypt_priv_key_to_blob(blob_sec, RSA_KEY_FILE, key_buf_start,
+				get_rsa_keys_size());
+
+	if (ret != 1)
+		goto err;
+
+	RSA_free(rsa);
+	BN_free(bn);
+
 	return 1;
 err:
 	return 0;
+}
+
+void assign_rsa_key(void *buf)
+{
+	phys_addr_t tmp;
+	int i;
+	static int first = 0;
+
+	if (buf == NULL) {
+		buf = get_buffer(get_rsa_keys_size());
+		if (buf == NULL) {
+			printf("error: no Memory\n");
+			exit(0);
+		}
+		first = 1;
+	}
+
+	key_buf_start = buf;
+	tmp  = va_to_pa((va_addr_t)buf);
+
+	for (i = 0; i < ARRAY_SIZE(key_info); i++) {
+		key_info[i].p_data = tmp;
+		if (first) {
+			memcpy((u8 *)pa_to_va(tmp), key_info[i].data,
+					key_info[i].len);
+			print_debug("set default key\n");
+		}
+		tmp += key_info[i].len;
+	}
 }

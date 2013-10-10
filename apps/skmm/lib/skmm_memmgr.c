@@ -326,6 +326,8 @@ void *get_buffer(u32 len)
 	bh *a_node = NULL;
 	bh *new_node = NULL;
 
+	len &= ~(sizeof(void *) - 1);
+	len += sizeof(void *);
 	print_debug("\nAllocating buffer\n");
 
 	spin_lock_bh(&(pool->mem_lock));

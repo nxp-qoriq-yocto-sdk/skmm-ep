@@ -91,8 +91,6 @@ struct key_info {
 	phys_addr_t p_data;
 };
 
-extern struct key_info key_info[];
-
 void reset_pool(void);
 void *reg_mem_pool(void *buf, u32 len);
 void *get_buffer(u32 len);
