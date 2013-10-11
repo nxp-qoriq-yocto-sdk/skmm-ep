@@ -33,9 +33,10 @@
 #ifndef _PCI_EP_VFIO_H
 #define _PCI_EP_VFIO_H
 
-#include <stdint.h>
-#include <usdpaa/vfio.h>
-#include <usdpaa/fsl_pci_ep_vfio.h>
+#include <usdpaa/of.h>
+#include <internal/of.h>
+#include <linux/vfio.h>
+#include <linux/fsl_pci_ep_vfio.h>
 
 struct vfio_us_container {
 	int fd;
@@ -45,6 +46,8 @@ struct vfio_us_container {
 struct vfio_us_group {
 	int fd;
 	int groupid;
+	int count;
+	struct list_head node;
 	struct vfio_us_container *container;
 };
 

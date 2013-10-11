@@ -30,21 +30,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <error.h>
-#include <dirent.h>
-#include <unistd.h>
-#include <libgen.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <string.h>
-#include <fcntl.h>
-
 #include <usdpaa/pci_ep_vfio.h>
+#include <sys/ioctl.h>
+
+static LIST_HEAD(group_list);
 
 int vfio_pci_ep_read_config(struct pci_ep *ep, void *buf, int len, int addr)
 {
@@ -79,7 +68,9 @@ void *vfio_pci_ep_map_win(struct pci_ep *ep, struct pci_ep_win *win,
 		   ep->fd, win->offset + off);
 
 	if (mem == MAP_FAILED) {
-		error(0, -errno, "fail to map off %llx -  %zd\n", off, len);
+		error(0, -errno,
+		      "failed to map win%d type:%d space:%llx-%zd\n",
+		      win->idx, win->type, off, len);
 		return NULL;
 	}
 
@@ -153,6 +144,18 @@ void vfio_pci_ep_info(struct pci_ep *ep)
 {
 	int i;
 	struct pci_ep_win *win;
+
+	/* Update inbound windows */
+	for (i = 0; i < ep->info.iw_num; i++) {
+		win = &ep->iw[i];
+		vfio_pci_ep_get_win(ep, win);
+	}
+
+	/* Update outbound windows */
+	for (i = 0; i < ep->info.ow_num; i++) {
+		win = &ep->ow[i];
+		vfio_pci_ep_get_win(ep, win);
+	}
 
 	printf("PCI EP device %s info:\n type: %s\n",
 		ep->name,
@@ -259,6 +262,13 @@ static struct vfio_us_group *vfio_get_group(int groupid)
 	char path[32];
 	struct vfio_group_status status = { .argsz = sizeof(status) };
 
+	list_for_each_entry(group, &group_list, node) {
+		if (group->groupid == groupid) {
+			group->count++;
+			return group;
+		}
+	}
+
 	snprintf(path, sizeof(path), "/dev/vfio/%d", groupid);
 	fd = open(path, O_RDWR);
 	if (fd < 0) {
@@ -283,6 +293,8 @@ static struct vfio_us_group *vfio_get_group(int groupid)
 		goto _err;
 	}
 
+	group->count++;
+	list_add_tail(&group->node, &group_list);
 	return group;
 
 _err:
@@ -293,8 +305,14 @@ _err:
 
 void vfio_put_group(struct vfio_us_group *group)
 {
+	group->count--;
+
+	if (group->count > 0)
+		return;
+
 	vfio_disconnect_container(group);
 	close(group->fd);
+	list_del(&group->node);
 	free(group);
 }
 
@@ -343,7 +361,7 @@ struct pci_ep *vfio_pci_ep_open(int controller, int pf, int vf)
 
 	group = vfio_get_group(groupid);
 	if (!group) {
-		printf("\n\ncan not open group %d\n", groupid);
+		error(0, -errno, "can not open group %d\n", groupid);
 		return NULL;
 	}
 
