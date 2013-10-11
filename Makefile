@@ -56,6 +56,9 @@ endif
 
 # ----=[ Tools ]=----
 INSTALL		?= install
+CC		:= $(CROSS_COMPILE)gcc
+LD		:= $(CROSS_COMPILE)ld
+AR		:= $(CROSS_COMPILE)ar
 
 # ----=[ Directories and flags ]=----
 TOP_LEVEL	:= $(shell pwd)
