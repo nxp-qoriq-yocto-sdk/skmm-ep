@@ -1,5 +1,4 @@
-# Copyright (c) 2011 Freescale Semiconductor, Inc.
-# All rights reserved.
+# Copyright  2013 Freescale Semiconductor, Inc.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
@@ -29,7 +28,11 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-SUBDIRS = pci_test skmm pciep_dma
+bin_PROGRAMS = pciep_dma
 
-# install the SOURCE_THIS file in the 'root' home directory
-SOURCE_THIS_install := root
+pciep_dma_SOURCES := pciep_dma.c
+
+pciep_dma_LDADD :=skmm_pci_ep_vfio skmm_dma_mem skmm_of skmm_process skmm_dma
+
+pciep_dma_CFLAGS := $(LIBEDIT_CFLAGS)
+pciep_dma_LDFLAGS := $(LIBEDIT_LDFLAGS) -T $(TOP_LEVEL)/apps/pciep_dma/pciep_dma.lds
