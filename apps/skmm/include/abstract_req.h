@@ -171,8 +171,9 @@ struct rsa_pub_desc_s {
 
 struct rsa_pub_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct rsa_pub_desc_s rsa_pub_desc;
-};
+} __packed;
 
 struct rsa_priv_frm3_desc_s {
 	u32 desc_hdr;
@@ -192,10 +193,11 @@ struct rsa_priv_frm3_desc_s {
 
 struct rsa_priv_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct rsa_priv_frm3_desc_s rsa_priv;
 	void *tmp1;
 	void *tmp2;
-};
+} __packed;
 
 #define DSA_L_SHIFT	7
 
@@ -212,8 +214,9 @@ struct keygen_desc_s {
 
 struct keygen_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct keygen_desc_s keygen;
-};
+} __packed;
 
 struct dsa_sign_desc_s {
 	u32 desc_hdr;
@@ -234,9 +237,10 @@ struct dsa_sign_desc_s {
 
 struct dsa_sign_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct dsa_sign_desc_s dsa_sign;
 	void *tmp;
-};
+} __packed;
 
 struct dsa_verify_desc_s {
 	u32 desc_hdr;
@@ -254,6 +258,7 @@ struct dsa_verify_desc_s {
 
 struct dsa_verify_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct dsa_verify_desc_s dsa_verify;
 	void *tmp;
 };
@@ -274,9 +279,10 @@ struct ecdsa_sign_desc_s {
 
 struct ecdsa_sign_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct ecdsa_sign_desc_s ecdsa_sign;
 	void *tmp;
-};
+} __packed;
 
 struct ecdsa_verify_desc_s {
 	u32 desc_hdr;
@@ -306,8 +312,9 @@ struct dh_key_desc_s {
 
 struct dh_key_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct dh_key_desc_s dh_key;
-};
+} __packed;
 
 struct ecdh_key_desc_s {
 	u32 desc_hdr;
@@ -323,8 +330,9 @@ struct ecdh_key_desc_s {
 
 struct ecdh_key_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct ecdh_key_desc_s ecdh_key;
-};
+} __packed;
 
 struct dh_keygen_desc_s {
 	u32 desc_hdr;
@@ -339,9 +347,10 @@ struct dh_keygen_desc_s {
 
 struct ecdsa_verify_alloc_block {
 	struct abs_req_s *abs_req;
+	void (*callback)(void);
 	struct ecdsa_verify_desc_s ecdsa_verify;
 	void *tmp;
-};
+} __packed;
 
 union desc_u {
 	struct rsa_pub_desc_s *rsa_pub_desc;
@@ -1980,5 +1989,6 @@ void free_resource(phys_addr_t desc);
 
 
 int get_rsa_keys_size(void);
+int get_dsa_keys_size(void);
 
 #endif /* __ABSTRACT_REQ_H__ */

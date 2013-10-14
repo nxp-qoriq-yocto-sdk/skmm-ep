@@ -1199,7 +1199,7 @@ static inline void raise_intr_app_ring(app_ring_pair_t *r)
 inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
 			app_ring_pair_t *resp, u32 *count)
 {
-	i32 i = 0, ri = 0, wi = 0, jrdepth = jr->size, rpdepth = rp->depth;
+	i32 i = 0, ri = 0, jrdepth = jr->size, rpdepth = rp->depth;
 	i32 rps_wi = 0, rpsdepth = resp->depth;
 	u32 cnt = *count;
 	phys_addr_t desc;
@@ -1208,12 +1208,12 @@ inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
 	print_debug("%s(): id: %d\n", __func__, jr->id);
 
 	ri = rp->idxs->r_index;
-	wi = jr->tail;
 	rps_wi = resp->idxs->w_index;
 
 	for (i = 0; i < cnt; i++) {
-		print_debug("%s():Adding desc : %llx from ri: %d to sec at wi: %d\n",
-			__func__, rp->req_r[ri].desc, ri, wi);
+		print_debug("%s():Adding desc : %llx from ri: %d"
+			"to sec at wi: %d\n",
+			__func__, rp->req_r[jr->tail].desc, ri, jr->tail);
 
 		desc = parse_abs_to_desc(rp->req_r[ri].desc);
 		if (desc == 0)
@@ -1225,17 +1225,17 @@ inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
 				sw_cnt++;
 				rps_wi = (rps_wi + 1) & ~rpsdepth;
 				ri = (ri+1) & ~rpdepth;
-				wi = jr->tail;
 				continue;
 			}
 		}
 
-		jr->i_ring[wi].desc = desc;
+		jr->i_ring[jr->tail].desc = desc;
+	print_debug("sec id: %d hw desc :%llx index: %d\n",
+			jr->id, jr->i_ring[jr->tail].desc, jr->tail);
 		ri = (ri+1) & ~rpdepth;
-		wi = (wi+1) & ~jrdepth;
+		jr->tail = MOD_INC(jr->tail, jrdepth);
 	}
 	rp->idxs->r_index = ri;
-	jr->tail          = wi;
 
 	*count = i;
 
@@ -1247,8 +1247,6 @@ inline int enq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *rp,
 	}
 
 	print_debug("sw cnt :%d, sum cnt :%d\n", sw_cnt, i);
-	print_debug("sec id: %d hw desc :%llx index: %d\n",
-			jr->id, jr->i_ring[wi].desc, wi);
 
 	return sw_cnt;
 }
@@ -1279,27 +1277,26 @@ RET:
 
 inline void ceq_circ_cpy(sec_jr_t *jr, app_ring_pair_t *r, u32 count)
 {
-	i32 i = 0, wi = 0, ri = 0, jrdepth = jr->size, rdepth = r->depth;
+	i32 i = 0, wi = 0, jrdepth = jr->size, rdepth = r->depth;
 
 	print_debug("%s( ) cnt: %d id: %d\n", __func__, count, jr->id);
 	wi = r->idxs->w_index;
-	ri = jr->head;
 
-	print_debug("%s( ): Wi: %d, ri: %d\n", __func__, wi, ri);
+	print_debug("%s( ): Wi: %d, ri: %d\n", __func__, wi, jr->head);
 	for (i = 0; i < count; i++) {
 		print_debug("%s( ): Dequeued desc : %0llx from ri: %d"
 				"storing at wi: %d\n",
-				__func__, jr->o_ring[ri].desc, ri, wi);
+				__func__, jr->o_ring[jr->head].desc,
+				jr->head, wi);
 		print_debug("sec id: %d hw desc :%llx index: %d\n",
-				jr->id, jr->o_ring[ri].desc, ri);
-		r->resp_r[wi].desc   = get_abs_req(jr->o_ring[ri].desc);
-		free_resource(jr->o_ring[ri].desc);
-		r->resp_r[wi].result = jr->o_ring[ri].status;
+				jr->id, jr->o_ring[jr->head].desc, jr->head);
+		r->resp_r[wi].desc  = get_abs_req(jr->o_ring[jr->head].desc);
+		free_resource(jr->o_ring[jr->head].desc);
+		r->resp_r[wi].result = jr->o_ring[jr->head].status;
 		wi =  (wi + 1) & ~(rdepth);
-		ri =  (ri + 1) & ~(jrdepth);
+		jr->head = MOD_INC(jr->head, jrdepth);
 	}
 	r->idxs->w_index = wi;
-	jr->head         = ri;
 }
 
 inline void resp_ring_enqueue(sec_jr_t *jr, app_ring_pair_t *r, u32 cnt)
@@ -1764,7 +1761,6 @@ static void handshake(c_mem_layout_t *mem, u32 *cursor)
 	}
 }
 
-extern void dsa_blob(void);
 extern void ecdsa_blob(void);
 extern void dh_blob(void);
 extern void ecdh_blob(void);
@@ -1843,7 +1839,6 @@ START:
 	c_mem->intr_timeout_ticks = usec2ticks(2);
 	blob_sec = c_mem->rsrc_mem->sec;
 
-	dsa_blob();
 	ecdsa_blob();
 	dh_blob();
 	ecdh_blob();
@@ -1898,6 +1893,7 @@ START:
 	}
 
 	decrypt_priv_key_from_blob(c_mem->rsrc_mem->sec, BLOB_RSA);
+	decrypt_priv_key_from_blob(c_mem->rsrc_mem->sec, BLOB_DSA);
 
 #ifdef HIGH_PERF
 	ring_processing_perf(c_mem);

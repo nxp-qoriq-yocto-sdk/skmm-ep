@@ -303,7 +303,8 @@ inline phys_addr_t get_abs_req(phys_addr_t desc)
 {
 	struct abs_req_s **abs_req;
 
-	abs_req = (struct abs_req_s **)(pa_to_va(desc) - sizeof(abs_req));
+	abs_req = (struct abs_req_s **)(pa_to_va(desc) -
+			sizeof(void (*)(void)) - sizeof(abs_req));
 
 	return va_to_pa((va_addr_t)*abs_req);
 }
@@ -311,6 +312,7 @@ inline phys_addr_t get_abs_req(phys_addr_t desc)
 void free_resource(phys_addr_t desc)
 {
 	struct rsa_priv_alloc_block *priv_buf;
+	struct keygen_alloc_block *dsa_keygen;
 	struct dsa_verify_alloc_block *dsa_verify_buf;
 	struct dsa_sign_alloc_block *dsa_sign_buf;
 	struct ecdsa_verify_alloc_block *ecdsa_verify_buf;
@@ -318,7 +320,8 @@ void free_resource(phys_addr_t desc)
 
 	struct abs_req_s **abs_req;
 
-	abs_req = (struct abs_req_s **)(pa_to_va(desc) - sizeof(abs_req));
+	abs_req = (struct abs_req_s **)(pa_to_va(desc) -
+			sizeof(void (*)(void)) - sizeof(abs_req));
 
 	switch ((*abs_req)->abs_req_id) {
 	case SKMM_RSA_PUB_OP:
@@ -334,6 +337,9 @@ void free_resource(phys_addr_t desc)
 		put_buffer(priv_buf);
 		break;
 	case SKMM_DSA_KEYGEN:
+		dsa_keygen = (struct keygen_alloc_block *)abs_req;
+		if (dsa_keygen->callback)
+			dsa_keygen->callback();
 		put_buffer(abs_req);
 		break;
 	case SKMM_DSA_VERIFY:

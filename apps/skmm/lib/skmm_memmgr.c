@@ -404,6 +404,8 @@ void *get_buffer(u32 len)
 	}
 	spin_unlock_bh(&(pool->mem_lock));
 
+	memset((u8 *)a_node + sizeof(bh), 0, len);
+
 	return (u8 *)a_node + sizeof(bh);
 error:
 	spin_unlock_bh(&(pool->mem_lock));

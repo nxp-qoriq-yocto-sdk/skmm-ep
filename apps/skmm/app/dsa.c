@@ -34,6 +34,7 @@
 #include <skmm.h>
 #include <skmm_memmgr.h>
 #include <abstract_req.h>
+#include <skmm_sec_blob.h>
 
 #define PRIV_KEY_LEN 32
 #define SUPPORT_KEY_NUM 4
@@ -47,27 +48,7 @@ enum {
 	dsa_sign_s_4k,
 };
 
-static struct key_info dsa_key_info[SUPPORT_KEY_NUM];
 
-phys_addr_t get_dsa_s_addr(int type)
-{
-	switch (type) {
-	case SKMM_DSA_SIGN_512:
-		return dsa_key_info[dsa_sign_s_512].p_data;
-	case SKMM_DSA_SIGN_1K:
-		return dsa_key_info[dsa_sign_s_1k].p_data;
-	case SKMM_DSA_SIGN_2K:
-		return dsa_key_info[dsa_sign_s_2k].p_data;
-	case SKMM_DSA_SIGN_4K:
-		return dsa_key_info[dsa_sign_s_4k].p_data;
-	}
-
-	return 0;
-}
-
-void dsa_blob_in(void)
-{
-}
 
 static u8 PRIV_KEY_1024[] = {
 	0x31, 0x6D, 0xAC, 0x0E, 0x27, 0x2F, 0xBF, 0x8F, 0x1E, 0xEA, 0xE0, 0x7C,
@@ -90,29 +71,46 @@ static u8 PRIV_KEY_4096[] = {
 	0x02, 0x0f, 0x61
 };
 
-void init_key_info(void)
+static struct key_info dsa_key_info[SUPPORT_KEY_NUM] = {
+	{
+		.len = PRIV_KEY_LEN,
+	},
+	{
+		.data = PRIV_KEY_1024,
+		.len = PRIV_KEY_LEN,
+	},
+	{
+		.data = PRIV_KEY_2048,
+		.len = PRIV_KEY_LEN,
+	},
+	{
+		.data = PRIV_KEY_4096,
+		.len = PRIV_KEY_LEN,
+	}
+};
+
+phys_addr_t get_dsa_s_addr(int type)
 {
-	u8 *dsa_512_addr = dsa_key[0];
-	u8 *dsa_1k_addr = dsa_key[1];
-	u8 *dsa_2k_addr = dsa_key[2];
-	u8 *dsa_4k_addr = dsa_key[3];
+	switch (type) {
+	case SKMM_DSA_SIGN_512:
+		return dsa_key_info[dsa_sign_s_512].p_data;
+	case SKMM_DSA_SIGN_1K:
+		return dsa_key_info[dsa_sign_s_1k].p_data;
+	case SKMM_DSA_SIGN_2K:
+		return dsa_key_info[dsa_sign_s_2k].p_data;
+	case SKMM_DSA_SIGN_4K:
+		return dsa_key_info[dsa_sign_s_4k].p_data;
+	}
 
+	return 0;
+}
 
-	memset(dsa_key, 0, sizeof(dsa_key));
+static void init_key_info(void)
+{
+	int i;
 
-	dsa_key_info[dsa_sign_s_512].len = PRIV_KEY_LEN;
-	dsa_key_info[dsa_sign_s_1k].len = PRIV_KEY_LEN;
-	dsa_key_info[dsa_sign_s_2k].len = PRIV_KEY_LEN;
-	dsa_key_info[dsa_sign_s_4k].len = PRIV_KEY_LEN;
-
-	dsa_key_info[dsa_sign_s_512].data = dsa_512_addr;
-	dsa_key_info[dsa_sign_s_1k].data = dsa_1k_addr;
-	dsa_key_info[dsa_sign_s_2k].data = dsa_2k_addr;
-	dsa_key_info[dsa_sign_s_4k].data = dsa_4k_addr;
-
-	memcpy(dsa_key[1], PRIV_KEY_1024, PRIV_KEY_LEN);
-	memcpy(dsa_key[2], PRIV_KEY_2048, PRIV_KEY_LEN);
-	memcpy(dsa_key[3], PRIV_KEY_4096, PRIV_KEY_LEN);
+	for (i = 0; i < ARRAY_SIZE(dsa_key_info); i++)
+		dsa_key_info[i].len = PRIV_KEY_LEN;
 }
 
 void dsa_blob(void)
@@ -135,11 +133,35 @@ void dsa_blob(void)
 	}
 }
 
+int get_dsa_keys_size(void)
+{
+	int i, len = 0;
+
+	for (i = 0; i < ARRAY_SIZE(dsa_key_info); i++)
+		len += dsa_key_info[i].len;
+
+	return len;
+}
+
+extern sec_engine_t *blob_sec;
+static void *key_buf_start;
+
+static void keygen_callback(void)
+{
+	int ret;
+#if 1
+	ret = encrypt_priv_key_to_blob(blob_sec, DSA_KEY_FILE, key_buf_start,
+				get_dsa_keys_size());
+	print_debug("%s ret :%d\n", __func__, ret);
+#endif
+}
+
 int constr_keygen_desc(struct req_info *req_info)
 {
 	struct abs_req_s *abs_req = req_info->abs_req;
 	struct keygen *abs_keygen;
 	struct keygen_desc_s *dsa_keygen = req_info->sec_desc->keygen;
+	struct keygen_alloc_block *dsa_keygen_pdata = req_info->private_data;
 	u32 q_len, r_len;
 	int type;
 
@@ -185,6 +207,7 @@ int constr_keygen_desc(struct req_info *req_info)
 	dsa_keygen->op = CMD_OPERATION | OP_TYPE_UNI_PROTOCOL |
 			OP_PCLID_PUBLICKEYPAIR;
 
+	dsa_keygen_pdata->callback = keygen_callback;
 	__sync_synchronize();
 
 	return 1;
@@ -295,4 +318,33 @@ int constr_dsa_sec_desc(struct req_info *req_info)
 	}
 
 	return 1;
+}
+
+void assign_dsa_key(void *buf)
+{
+	phys_addr_t tmp;
+	int i;
+	static int first = 0;
+
+	if (buf == NULL) {
+		buf = get_buffer(get_dsa_keys_size());
+		if (buf == NULL) {
+			printf("error: no Memory\n");
+			exit(0);
+		}
+		first = 1;
+	}
+
+	key_buf_start = buf;
+	tmp  = va_to_pa((va_addr_t)buf);
+
+	for (i = 0; i < ARRAY_SIZE(dsa_key_info); i++) {
+		dsa_key_info[i].p_data = tmp;
+		if (first) {
+			print_debug("set default key\n");
+			memcpy((u8 *)pa_to_va(tmp), dsa_key_info[i].data,
+					dsa_key_info[i].len);
+		}
+		tmp += dsa_key_info[i].len;
+	}
 }

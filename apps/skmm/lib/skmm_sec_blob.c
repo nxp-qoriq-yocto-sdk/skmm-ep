@@ -159,6 +159,8 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, int type)
 
 	if (type == BLOB_RSA)
 		len = get_rsa_keys_size();
+	if (type == BLOB_DSA)
+		len = get_dsa_keys_size();
 
 	blob_para.input_len = len + (BLOB_KEY_HEADER + BLOB_MAC);
 
@@ -214,6 +216,8 @@ int decrypt_priv_key_from_blob(sec_engine_t *ccsr_sec, int type)
 out_blob:
 	if (type == BLOB_RSA)
 		assign_rsa_key(output_buf);
+	if (type == BLOB_DSA)
+		assign_dsa_key(output_buf);
 
 	fsl_sec_init(sec);
 
@@ -266,9 +270,13 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, const char *key_file,
 
 	constr_jobdesc_blob_encrypt(&blob_para);
 
-	print_debug("out: %d, in: %d\n", in_be32(&sec->jr.regs->orsf),
-			in_be32(&sec->jr.regs->irja));
-	while (sec->jr.head * 8 != in_be32(&sec->jr.regs->irri))
+	print_debug("out: %d, in: %d sec->jr.tail: %d, %d\n",
+			in_be32(&sec->jr.regs->orsf),
+			in_be32(&sec->jr.regs->irja),
+			sec->jr.tail, in_be32(&sec->jr.regs->orwi));
+
+	/* poll until the completion of job ring */
+	while (sec->jr.tail * 12 != in_be32(&sec->jr.regs->orwi))
 		;
 	sec->jr.i_ring[sec->jr.tail].desc = va_to_pa((va_addr_t)desc_buf);
 	sec->jr.tail = MOD_INC(sec->jr.tail, sec->jr.size);
@@ -284,7 +292,7 @@ int encrypt_priv_key_to_blob(sec_engine_t *ccsr_sec, const char *key_file,
 	print_debug("id: %d, sec->jr.head:%d sec->jr.tail %d\n",
 					sec->id, sec->jr.head,
 			sec->jr.tail);
-	sec->jr.head = sec->jr.tail;
+	sec->jr.head = MOD_INC(sec->jr.head, sec->jr.size);
 
 	mount_key_dir();
 
