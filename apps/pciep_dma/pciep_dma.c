@@ -145,21 +145,22 @@ static int process_msg(struct worker *worker)
 static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 {
 	volatile struct pcidma_config *config;
-	volatile struct rx_config *rx;
-	uint64_t bar, offset, src, dest;
+	volatile struct rw_config *rwcfg;
+	uint64_t bar, offset, local, remote, src, dest;
 	int i;
 	void *buf = NULL;
 	struct atb_clock *atb_clock = NULL;
 
 	config = pcidma->config;
-	rx = &config->rxcfg;
+	rwcfg = &config->rwcfg;
 
-	bar = rx->bar64;
+	bar = rwcfg->bar64;
 	PCIEP_DBG("\nstart a test\n"
 		  "\tremote addr:%llx, loop:0x%d  size:%dB\n",
-		  bar, rx->loop, rx->size);
+		  bar, rwcfg->loop, rwcfg->size);
 
-	if (rx->loop == 0 || rx->size == 0 || rx->size > BUFFER_WIN_SIZE)
+	if (rwcfg->loop == 0 || rwcfg->size == 0 ||
+	    rwcfg->size > BUFFER_WIN_SIZE)
 		goto _err;
 
 	offset = bar & BUFFER_OFFSET_MASK;
@@ -168,15 +169,24 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 	pcidma->out_mem_win->attr = 0; /* Use default setting */
 	vfio_pci_ep_set_win(pcidma->ep, pcidma->out_mem_win);
 
-	dest = pcidma->out_mem_win->cpu_addr + offset;
+	remote = pcidma->out_mem_win->cpu_addr + offset;
 
-	buf = __dma_mem_memalign(rx->size, rx->size);
+	buf = __dma_mem_memalign(rwcfg->size, rwcfg->size);
 	if (!buf) {
-		error(0, 0, "failed to allocate dma mem %dB\n", rx->size);
+		error(0, 0, "failed to allocate dma mem %dB\n", rwcfg->size);
 		goto _err;
 	}
-	memset(buf, 0xa5, rx->size);
-	src = __dma_mem_vtop(buf);
+	memset(buf, 0xa5, rwcfg->size);
+	local = __dma_mem_vtop(buf);
+
+	if (rwcfg->type == RW_TYPE_WRITE) {
+		dest = remote;
+		src = local;
+	} else if (rwcfg->type == RW_TYPE_READ) {
+		dest = local;
+		src = remote;
+	} else
+		goto _err;
 
 	atb_clock = malloc(sizeof(*atb_clock));
 	if (!atb_clock) {
@@ -185,9 +195,9 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 	}
 	atb_clock_init(atb_clock);
 
-	for (i = 0; i < rx->loop; i++) {
+	for (i = 0; i < rwcfg->loop; i++) {
 		atb_clock_start(atb_clock);
-		fsl_dma_direct_start(dmadev, src, dest, rx->size);
+		fsl_dma_direct_start(dmadev, src, dest, rwcfg->size);
 		if (fsl_dma_wait(dmadev) < 0) {
 			error(0, 0, "dma task error!\n");
 			goto _err;
@@ -195,9 +205,9 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 		atb_clock_stop(atb_clock);
 	}
 
-	rx->result64 = (u64)rx->size * 8 * rx->loop * atb_multiplier /
+	rwcfg->result64 = (u64)rwcfg->size * 8 * rwcfg->loop * atb_multiplier /
 			atb_clock_total(atb_clock);
-	PCIEP_DBG("\ttest result:%lldbps\n", rx->result64);
+	PCIEP_DBG("\ttest result:%lldbps\n", rwcfg->result64);
 
 	free(atb_clock);
 
@@ -208,7 +218,7 @@ _err:
 		__dma_mem_free(buf);
 
 	free(atb_clock);
-	rx->result64 = 0;
+	rwcfg->result64 = 0;
 
 	return PCIDMA_STATUS_ERROR;
 }
