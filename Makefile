@@ -153,8 +153,6 @@ do_install_$(1):$($(1)_install_from)/$($(1)_install_name)
 	$$(Q)$(INSTALL) $(INSTALL_FLAGS) apps/skmm/lib/80-sec-uio.rules $(DESTDIR)/etc/udev/rules.d/80-sec-uio.rules
 	$$(Q)echo " [INSTALL] 81-sram-uio.rules"
 	$$(Q)$(INSTALL) $(INSTALL_FLAGS) apps/skmm/lib/81-sram-uio.rules $(DESTDIR)/etc/udev/rules.d/81-sram-uio.rules
-	$$(Q)echo " [INSTALL] RSA_priv3"
-	$$(Q)$(INSTALL) $(INSTALL_FLAGS) priv_key/RSA_priv3 $(DESTDIR)/home/root/.skmm/RSA_priv3
     endif
 do_uninstall_$(1):
     ifeq (skmm,$(1))
