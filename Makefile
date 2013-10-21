@@ -38,7 +38,7 @@ ifneq (distclean,$(MAKECMDGOALS))
    $(ARCH)_SPEC_DEFINE	:= _FILE_OFFSET_BITS=64
    $(ARCH)_SPEC_INC_PATH:=
    $(ARCH)_SPEC_LIB_PATH:=
-   $(ARCH)_SPEC_CFLAGS	:= -mcpu=e500mc
+   $(ARCH)_SPEC_CFLAGS	:=
    $(ARCH)_SPEC_LDFLAGS	:=
  else
   ifeq (powerpc64,$(ARCH))
@@ -46,7 +46,7 @@ ifneq (distclean,$(MAKECMDGOALS))
     $(ARCH)_SPEC_DEFINE	 :=
     $(ARCH)_SPEC_INC_PATH:=
     $(ARCH)_SPEC_LIB_PATH:=
-    $(ARCH)_SPEC_CFLAGS	 := -mcpu=e500mc64 -m64
+    $(ARCH)_SPEC_CFLAGS	 :=
     $(ARCH)_SPEC_LDFLAGS :=
   else
    $(error "ARCH not defined.")
