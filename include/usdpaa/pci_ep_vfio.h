@@ -58,6 +58,8 @@ struct pci_ep {
 	struct pci_ep_info info;
 	struct pci_ep_win iw[4];
 	struct pci_ep_win ow[5];
+	struct pci_ep_win vfiw[4];
+	struct pci_ep_win vfow[4];
 	struct pci_ep_win reg;
 	struct pci_ep_win config;
 };

@@ -69,7 +69,7 @@ void *vfio_pci_ep_map_win(struct pci_ep *ep, struct pci_ep_win *win,
 
 	if (mem == MAP_FAILED) {
 		error(0, -errno,
-		      "failed to map win%d type:%d space:%llx-%zd\n",
+		      "failed to map win%d type:%d offset:0x%llx length:%zd\n",
 		      win->idx, win->type, off, len);
 		return NULL;
 	}
@@ -125,6 +125,22 @@ int vfio_pci_ep_init(struct pci_ep *ep)
 		vfio_pci_ep_get_win(ep, win);
 	}
 
+	/* Initialize VF inbound windows */
+	for (i = 0; i < info->vf_iw_num; i++) {
+		win = &ep->vfiw[i];
+		win->type = PCI_EP_REGION_VF_IBWIN;
+		win->idx = i;
+		vfio_pci_ep_get_win(ep, win);
+	}
+
+	/* Initialize VF outbound windows */
+	for (i = 0; i < info->vf_ow_num; i++) {
+		win = &ep->vfow[i];
+		win->type = PCI_EP_REGION_VF_OBWIN;
+		win->idx = i;
+		vfio_pci_ep_get_win(ep, win);
+	}
+
 	/* Initialize PCI controller registers  window */
 	win = &ep->reg;
 	win->type = PCI_EP_REGION_REGS;
@@ -151,9 +167,21 @@ void vfio_pci_ep_info(struct pci_ep *ep)
 		vfio_pci_ep_get_win(ep, win);
 	}
 
+	/* Update VF inbound windows */
+	for (i = 0; i < ep->info.vf_iw_num; i++) {
+		win = &ep->vfiw[i];
+		vfio_pci_ep_get_win(ep, win);
+	}
+
 	/* Update outbound windows */
 	for (i = 0; i < ep->info.ow_num; i++) {
 		win = &ep->ow[i];
+		vfio_pci_ep_get_win(ep, win);
+	}
+
+	/* Update VF outbound windows */
+	for (i = 0; i < ep->info.vf_ow_num; i++) {
+		win = &ep->vfow[i];
 		vfio_pci_ep_get_win(ep, win);
 	}
 
@@ -164,20 +192,41 @@ void vfio_pci_ep_info(struct pci_ep *ep)
 	printf("\nOutbound windows:\n");
 	for (i = 0; i < ep->info.ow_num; i++) {
 		win = &ep->ow[i];
-		printf("Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
+		printf(
+		       "Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
 		       "attr:0x%x  vfio_off:0x%llx\n",
 			win->idx, win->cpu_addr, win->pci_addr, win->size,
 			win->attr, win->offset);
 	}
 
+	for (i = 0; i < ep->info.vf_ow_num; i++) {
+		win = &ep->vfow[i];
+		printf(
+		       "VF Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
+		       "attr:0x%x  vfio_off:0x%llx\n",
+			win->idx, win->cpu_addr, win->pci_addr, win->size,
+			win->attr, win->offset);
+		}
+
+
 	printf("\nInbound windows:\n");
 	for (i = 0; i < ep->info.iw_num; i++) {
 		win = &ep->iw[i];
-		printf("Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
-		       " attr:0x%x  vfio_off:0x%llx\n",
+		printf(
+		       "Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
+		       "attr:0x%x  vfio_off:0x%llx\n",
 			win->idx, win->cpu_addr, win->pci_addr, win->size,
 			win->attr, win->offset);
 	}
+
+	for (i = 0; i < ep->info.vf_iw_num; i++) {
+		win = &ep->vfiw[i];
+		printf(
+		       "VF Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
+		       "attr:0x%x  vfio_off:0x%llx\n",
+			win->idx, win->cpu_addr, win->pci_addr, win->size,
+			win->attr, win->offset);
+		}
 
 	printf("\nRegisters window:\n");
 	win = &ep->reg;
