@@ -202,7 +202,7 @@ int fsl_pci_init(u32 pci_idx, phys_addr_t in_win_base)
 
 	/* Set outbound and inbound */
 	set_outbound_window(pci, pcie_out_win_base, POWAR_MEM_8G);
-	set_inbound_window(pci, in_win_base, PIWAR_MEM_1M);
+	set_inbound_window(pci, in_win_base, PIWAR_MEM_512K);
 
 	return 0;
 err:

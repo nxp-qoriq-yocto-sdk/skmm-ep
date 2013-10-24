@@ -423,10 +423,10 @@ static u32 init_rsrc_sec(sec_engine_t *sec, u32 *cursor)
 	return mem;
 }
 
-static void alloc_rsrc_mem(c_mem_layout_t *c_mem, u32 *pcursor, u32 *l2cursor)
+static void alloc_rsrc_mem(c_mem_layout_t *c_mem, u32 *pcursor, u32 *pltcursor)
 {
 	resource_t *rsrc  = c_mem->rsrc_mem;
-	u32 l2_cursor     = *l2cursor;
+	u32 plt_cursor     = *pltcursor;
 	u32 p_cursor      = *pcursor;
 	sec_engine_t *sec = NULL;
 	i32 i            = 0;
@@ -436,7 +436,7 @@ static void alloc_rsrc_mem(c_mem_layout_t *c_mem, u32 *pcursor, u32 *l2cursor)
 	print_debug("\n alloc_rsrc_mem\n");
 	print_debug("\t rsrc addr :%p\n", rsrc);
 
-	local_pool = (void *)(l2_cursor + TOTAL_CARD_MEMORY);
+	local_pool = (void *)(plt_cursor - DEFAULT_EP_POOL_SIZE - HOLE_SIZE);
 	memset((u8 *)rsrc, 0, sizeof(resource_t));
 
 	sec_nums = fsl_sec_get_eng_num();
@@ -468,9 +468,9 @@ static void alloc_rsrc_mem(c_mem_layout_t *c_mem, u32 *pcursor, u32 *l2cursor)
 	}
 
 #ifdef COMMON_IP_BUFFER_POOL
-	rsrc->ip_pool = (void *)(l2_cursor);
+	rsrc->ip_pool = (void *)(plt_cursor);
 	memset(rsrc->ip_pool, 0, DEFAULT_POOL_SIZE);
-	l2_cursor += ALIGN_TO_L1_CACHE_LINE(DEFAULT_POOL_SIZE);
+	plt_cursor += ALIGN_TO_L1_CACHE_LINE(DEFAULT_POOL_SIZE);
 	c_mem->free_mem -= (DEFAULT_POOL_SIZE);
 
 	print_debug("\t	ip pool addr: %p\n", rsrc->ip_pool);
@@ -485,7 +485,7 @@ static void alloc_rsrc_mem(c_mem_layout_t *c_mem, u32 *pcursor, u32 *l2cursor)
 	print_debug("\t free memory: %d\n", c_mem->free_mem);
 
 #endif
-	*l2cursor = l2_cursor;
+	*pltcursor = plt_cursor;
 	*pcursor  = p_cursor;
 }
 
@@ -1768,7 +1768,7 @@ sec_engine_t *blob_sec;
 
 int main(int argc, char *argv[])
 {
-	u32 l2_cursor = 0;
+	u32 l2_cursor = 0, plt_cursor;
 	u32 p_cursor = 0;
 	int i;
 	int fd;
@@ -1792,8 +1792,14 @@ START:
 #endif
 	fsl_pci_setup_law();
 
+	/* l2sram size 256k platform sram size 521k,
+	 * allign platform phy addr base on platform size.
+	 * there is a hole between l2sram and platform sram,
+	 * the size is 256k.
+	 */
 	l2_cursor = (u32) fsl_mem_init();
-	p_cursor = l2_cursor + TOTAL_CARD_MEMORY;
+	plt_cursor = l2_cursor + DEFAULT_EP_POOL_SIZE + HOLE_SIZE;
+	p_cursor = plt_cursor + TOTAL_CARD_MEMORY;
 	p_cursor = ALIGN_TO_L1_CACHE_LINE_REV(p_cursor);
 	p_cursor -= L1_CACHE_LINE_SIZE;
 
@@ -1809,8 +1815,8 @@ START:
 	c_mem->free_mem -= sizeof(c_mem_layout_t);
 	print_debug("c_hs_mem:%p\n", c_mem->c_hs_mem);
 
-	c_mem->v_ib_mem = l2_cursor;
-	c_mem->p_ib_mem = va_to_pa(l2_cursor);
+	c_mem->v_ib_mem = plt_cursor;
+	c_mem->p_ib_mem = va_to_pa(plt_cursor);
 	print_debug("v_ib_mem: %x\n", c_mem->v_ib_mem);
 	print_debug("p_ib_mem: %llx\n", c_mem->p_ib_mem);
 
@@ -1818,9 +1824,9 @@ START:
 	 * Get the PCIE1 controller  address
 	 */
 #ifdef SKMM_PCI_EP_VFIO
-	fsl_pci_vfio_init(SKMM_EP_PCIe_IDX, va_to_pa(l2_cursor));
+	fsl_pci_vfio_init(SKMM_EP_PCIe_IDX, va_to_pa(plt_cursor));
 #else
-	fsl_pci_init(SKMM_EP_PCIe_IDX, va_to_pa(l2_cursor));
+	fsl_pci_init(SKMM_EP_PCIe_IDX, va_to_pa(plt_cursor));
 #endif
 	pcie_out_win_base = fsl_pci_get_out_win_base();
 	c_mem->p_pci_mem = pcie_out_win_base;
@@ -1830,8 +1836,7 @@ START:
 
 	p_cursor -= sizeof(resource_t);
 	c_mem->rsrc_mem = (resource_t *) (p_cursor);
-	alloc_rsrc_mem(c_mem, &p_cursor , &l2_cursor);
-	/*alloc_rsrc_mem(c_mem, &l2_cursor);*/
+	alloc_rsrc_mem(c_mem, &p_cursor , &plt_cursor);
 	/*
 	 * Init the intr time counters
 	 */

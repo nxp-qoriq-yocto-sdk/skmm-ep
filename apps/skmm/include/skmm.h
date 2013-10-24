@@ -63,6 +63,7 @@
 #define SEC_JR_DEPTH		(128)
 #define DEFAULT_POOL_SIZE	(384 * 1024 + 120 * 1024)
 #define DEFAULT_EP_POOL_SIZE	(256 * 1024)
+#define HOLE_SIZE		(512 * 1024 - DEFAULT_EP_POOL_SIZE)
 
 /* Setting the same input buffer pool for all the rings */
 #define COMMON_IP_BUFFER_POOL

@@ -59,11 +59,13 @@
 #define PIWAR_READ_SNOOP	0x00050000
 #define PIWAR_WRITE_SNOOP	0x00005000
 #define PIWAR_MEM_1M		0x00000013
+#define PIWAR_MEM_512K		0x00000012
 
 /*
  * LAW setting for EP
  */
 #define LAW_SIZE_8G		0x20
+#define LAW_SIZE_512K		0x12
 #define LAW_ATR(trgt_id, size)	((1 << 31) | (trgt_id << 20) | size)
 
 #ifdef C293PCIE

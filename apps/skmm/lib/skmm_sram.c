@@ -84,16 +84,16 @@ static int setup_law_for_plt_sram(phys_addr_t l2sram, u32 *size)
 
 		write_reg(LAWAR_ADDR(law, i), 0);
 
-		write_reg(LAWBAR_ADDR(law, i),
-				(l2sram + (phys_addr_t)*size) >> LAW_BAR_SHIFT);
+		write_reg(LAWBAR_ADDR(law, i), (l2sram + (phys_addr_t)*size +
+				HOLE_SIZE) >> LAW_BAR_SHIFT);
 
 		write_reg(LAWAR_ADDR(law, i), LAW_ATR(trgt_id,
-					LAW_SIZE_8G));
+					LAW_SIZE_512K));
 		read_reg(LAWAR_ADDR(law, i));
 
 		print_debug("set platform sram %llx\n",
-				l2sram + (phys_addr_t)*size);
-		*size += PLATFORM_SRAM_SIZE;
+				l2sram + HOLE_SIZE + (phys_addr_t)*size);
+		*size += PLATFORM_SRAM_SIZE + HOLE_SIZE;
 		munmap(ccsr, 0x1000);
 		close(fd);
 		return 0;
