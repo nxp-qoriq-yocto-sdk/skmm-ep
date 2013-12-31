@@ -62,6 +62,7 @@ struct pci_ep {
 	struct pci_ep_win vfow[4];
 	struct pci_ep_win reg;
 	struct pci_ep_win config;
+	struct pci_ep_win msixow;
 };
 
 int vfio_pci_ep_read_config(struct pci_ep *ep, void *buf, int len, int addr);

@@ -153,6 +153,14 @@ int vfio_pci_ep_init(struct pci_ep *ep)
 	win->idx = 0;
 	vfio_pci_ep_get_win(ep, win);
 
+	/* Initialize PCI MSIX outbound windows */
+	if (info->msix_enable) {
+		win = &ep->msixow;
+		win->type = PCI_EP_REGION_MSIX_OBWIN;
+		win->idx = 0;
+		vfio_pci_ep_get_win(ep, win);
+	}
+
 	return 0;
 }
 
@@ -179,6 +187,12 @@ void vfio_pci_ep_info(struct pci_ep *ep)
 		vfio_pci_ep_get_win(ep, win);
 	}
 
+	/* Update MSIX outbound windows */
+	if (ep->info.msix_enable) {
+		win = &ep->msixow;
+		vfio_pci_ep_get_win(ep, win);
+	}
+
 	/* Update VF outbound windows */
 	for (i = 0; i < ep->info.vf_ow_num; i++) {
 		win = &ep->vfow[i];
@@ -195,6 +209,13 @@ void vfio_pci_ep_info(struct pci_ep *ep)
 		       "attr:0x%x\n",
 			win->idx, win->cpu_addr, win->pci_addr, win->size,
 			win->attr);
+	}
+
+	if (ep->info.msix_enable) {
+		win = &ep->msixow;
+		printf(
+		       "MSIX Win%d: cpu_addr:0x%llx size:0x%llx attr:0x%x\n",
+			win->idx, win->cpu_addr, win->size, win->attr);
 	}
 
 	for (i = 0; i < ep->info.vf_ow_num; i++) {
