@@ -433,10 +433,6 @@ static int pcidma_setup(struct pciep_dma_dev *pcidma)
 				    0, BUFFER_WIN_SIZE);
 
 	if (pcidma->type == PCI_EP_TYPE_PF) {
-		pcidma->remote_buffer =
-		vfio_pci_ep_map_win(pcidma->ep, pcidma->out_mem_win,
-				    0, BUFFER_WIN_SIZE);
-
 		pcidma->msix = pf->msix;
 		pcidma->config = pf->config;
 		pcidma->local_buffer = pf->local_buffer;
