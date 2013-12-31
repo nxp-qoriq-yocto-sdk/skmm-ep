@@ -113,7 +113,7 @@ static int64_t atb_multiplier;
 static unsigned long ncpus;
 static unsigned long cpu_idx;
 
-static struct dma_ch *dmadevs[MAX_PF_NUM];
+static struct dma_ch *dmadevs;
 
 static LIST_HEAD(workers);
 
@@ -237,23 +237,13 @@ static void *worker_fn(void *__worker)
 	int status;
 	struct pciep_dma_dev *pcidma = NULL;
 	volatile struct pcidma_config *config;
-	int pf_idx;
 
 	pcidma = worker->pvt;
 	config = pcidma->config;
-	pf_idx = pcidma->pf->idx;
 
 	fprintf(stderr, "Starting a %s\'s test thread on cpu%d\n",
 		pcidma->name, worker->cpu);
 
-	if (dmadevs[pf_idx] == NULL) {
-		status = fsl_dma_chan_init(&dmadevs[pf_idx], pf_idx, 0);
-		if (status < 0) {
-			error(0, -status, "%s: fsl_dma_chan_init()", __func__);
-			goto end;
-		}
-		fsl_dma_chan_basic_direct_init(dmadevs[pf_idx]);
-	}
 	/* Set this cpu-affinity */
 	CPU_ZERO(&cpuset);
 	CPU_SET(worker->cpu, &cpuset);
@@ -271,14 +261,13 @@ static void *worker_fn(void *__worker)
 	while (process_msg(worker)) {
 		if (config->command == PCIDMA_CMD_START) {
 			worker->status = config->status = PCIDMA_STATUS_BUSY;
-			status = pcidma_test(pcidma, dmadevs[pf_idx]);
+			status = pcidma_test(pcidma, dmadevs);
 			worker->status = config->status = status;
 			config->command = PCIDMA_CMD_NONE;
 		}
 	}
 
 end:
-	/* fsl_dma_chan_finish(dmadev); */
 	fprintf(stderr, "Leaving %s\'s test thread on cpu%d\n",
 		pcidma->name, worker->cpu);
 
@@ -940,6 +929,14 @@ int main(int argc, char *argv[])
 	if (pci_controller_init(controller, controller_idx))
 		goto leave;
 
+	/* DMA init */
+	rt = fsl_dma_chan_init(&dmadevs, 0, 0);
+	if (rt < 0) {
+		error(0, -rt, "failed to initialize DMA\n");
+		goto leave;
+	}
+	fsl_dma_chan_basic_direct_init(dmadevs);
+
 	/* start workers for test */
 	workers_auto_new(worker_num);
 
@@ -996,6 +993,8 @@ int main(int argc, char *argv[])
 
 leave:
 	of_finish();
+
+	fsl_dma_chan_finish(dmadevs);
 
 	if (controller)
 		pci_controller_free(controller);
