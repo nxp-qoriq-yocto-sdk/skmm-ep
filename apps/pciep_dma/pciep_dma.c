@@ -59,15 +59,14 @@ struct pciep_dma_dev {
 	struct pcipf_dev *pf;
 	int type;
 	int idx;
-	void *msix;
 	struct pcidma_config *config;
 	void *local_buffer;
 	void *remote_buffer;
+	void *msix_trap;
 	struct pci_ep_win *msix_win;
 	struct pci_ep_win *config_win;
 	struct pci_ep_win *buffer_win;
 	struct pci_ep_win *out_mem_win;
-	struct pci_ep_win *out_msi_win;
 	struct pci_ep *ep;
 	struct worker *worker;
 };
@@ -79,7 +78,7 @@ struct pcipf_dev {
 	int ep_num;
 	struct pciep_dma_dev *pcidma;
 	void *reg;
-	void *msix;
+	void *msix_trap;
 	void *config;
 	void *local_buffer;
 	void *vf_msix;
@@ -107,6 +106,14 @@ struct pci_controller {
 #define BUFFER_WIN_SIZE (2 * 1024 * 1024) /* 2M */
 #define BUFFER_OFFSET_MASK ((u64)BUFFER_WIN_SIZE - 1)
 #define CONFIG_SPACE_SIZE 0x1000
+
+#define MSIX_TD_TYPE_PF 0
+#define MSIX_TD_TYPE_VF 1
+#define MSIX_TD_TYPE_SHIFT 31
+#define MSIX_TD_VF_SHIFT 16
+#define MSIX_TD_ENTRY_SHIFT 8
+#define MSIX_TD_OP_TRIGGER 0
+#define MSIX_TD_OP_CLEAR_PENDING 1
 
 const char pciep_prompt[] = "pcidma> ";
 static int64_t atb_multiplier;
@@ -147,6 +154,24 @@ static int process_msg(struct worker *worker)
 	worker->msg = worker_msg_none;
 
 	return ret;
+}
+
+void pcidma_send_msix(struct pciep_dma_dev *pcidma, int idx)
+{
+	int type;
+	int vf_idx;
+
+	if (pcidma->type == PCI_EP_TYPE_PF) {
+		type = MSIX_TD_TYPE_PF;
+		vf_idx = 0;
+	} else {
+		type = MSIX_TD_TYPE_VF;
+		vf_idx = pcidma->idx - 1;
+	}
+
+	out_be32(pcidma->msix_trap, type << MSIX_TD_TYPE_SHIFT |
+		 vf_idx << MSIX_TD_VF_SHIFT | idx << MSIX_TD_ENTRY_SHIFT |
+		 MSIX_TD_OP_TRIGGER);
 }
 
 static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
@@ -422,20 +447,19 @@ static int pcidma_setup(struct pciep_dma_dev *pcidma)
 				    0, BUFFER_WIN_SIZE);
 
 	if (pcidma->type == PCI_EP_TYPE_PF) {
-		pcidma->msix = pf->msix;
 		pcidma->config = pf->config;
 		pcidma->local_buffer = pf->local_buffer;
 	} else {
 		int idx = pcidma->idx - 1;
 
-		pcidma->msix = pf->vf_msix + BUFFER_WIN_SIZE * idx;
 		pcidma->config = pf->vf_config + CONFIG_WIN_SIZE * idx;
 		pcidma->local_buffer = pf->vf_local_buffer +
 				       BUFFER_WIN_SIZE * idx;
 	}
 
-	memset(pcidma->msix, 0, MSIX_WIN_SIZE);
 	memset(pcidma->config, 0, CONFIG_WIN_SIZE);
+
+	pcidma->msix_trap = pf->msix_trap + ((pcidma->idx * 64) & 0xfc0);
 
 	return 0;
 }
@@ -482,15 +506,6 @@ static int pcipf_setup(struct pcipf_dev *pf)
 			return -ENOMEM;
 		}
 
-		pf->vf_msix =
-			__dma_mem_memalign(MSIX_WIN_SIZE * pf->vf_num,
-					   MSIX_WIN_SIZE * pf->vf_num);
-		if (!pf->vf_msix) {
-			error(0, 0,
-			      "failed to requst dma memory for VF MSIX\n");
-			return -ENOMEM;
-		}
-
 		pciep_iw_set(ep, &ep->vfiw[PCI_EP_WIN3_INDEX],
 			     __dma_mem_vtop(pf->vf_local_buffer),
 			     BUFFER_WIN_SIZE);
@@ -498,19 +513,9 @@ static int pcipf_setup(struct pcipf_dev *pf)
 		pciep_iw_set(ep, &ep->vfiw[PCI_EP_WIN2_INDEX],
 			     __dma_mem_vtop(pf->vf_config),
 			     CONFIG_WIN_SIZE);
-
-		pciep_iw_set(ep, &ep->vfiw[PCI_EP_WIN1_INDEX],
-			     __dma_mem_vtop(pf->vf_msix),
-			     MSIX_WIN_SIZE);
 	}
 
 	pf->reg = vfio_pci_ep_map_win(ep, &ep->reg, 0, ep->reg.size);
-
-	pf->msix = __dma_mem_memalign(MSIX_WIN_SIZE, MSIX_WIN_SIZE);
-	if (!pf->msix) {
-		error(0, 0, "failed to requst dma memory for msix");
-		return -ENOMEM;
-	}
 
 	pf->config = __dma_mem_memalign(CONFIG_WIN_SIZE, CONFIG_WIN_SIZE);
 	if (!pf->config) {
@@ -525,14 +530,20 @@ static int pcipf_setup(struct pcipf_dev *pf)
 		return -ENOMEM;
 	}
 
-	pciep_iw_set(pcidma->ep, pcidma->msix_win,
-			__dma_mem_vtop(pf->msix), MSIX_WIN_SIZE);
-
 	pciep_iw_set(pcidma->ep, pcidma->config_win,
 			__dma_mem_vtop(pf->config), CONFIG_WIN_SIZE);
 
 	pciep_iw_set(pcidma->ep, pcidma->buffer_win,
 			__dma_mem_vtop(pf->local_buffer), BUFFER_WIN_SIZE);
+
+	if (pcidma->ep->info.msix_enable) {
+		pf->msix_trap = vfio_pci_ep_map_win(ep, &ep->msixow,
+						    0, ep->msixow.size);
+		if (!pf->msix_trap) {
+			error(0, 0, "failed to map MSIX OW\n");
+			return -ENOMEM;
+		}
+	}
 
 	for (i = 0; i < pf->ep_num; i++)
 		pcidma_setup(&pf->pcidma[i]);
@@ -582,15 +593,11 @@ static void pcipf_free(struct pcipf_dev *pf)
 	for (i = 0; i < pf->ep_num; i++)
 		pcidma_free(&pf->pcidma[i]);
 
-	if (pf->msix)
-		__dma_mem_free(pf->msix);
 	if (pf->config)
 		__dma_mem_free(pf->config);
 	if (pf->local_buffer)
 		__dma_mem_free(pf->local_buffer);
 
-	if (pf->vf_msix)
-		__dma_mem_free(pf->vf_msix);
 	if (pf->vf_config)
 		__dma_mem_free(pf->vf_config);
 	if (pf->vf_local_buffer)
@@ -763,8 +770,6 @@ static int pciep_dump(int argc, char *argv[])
 		p = pcidma->pf->reg;
 	else if (!strcmp(argv[3], "config"))
 		p = (uint32_t *)pcidma->config;
-	else if (!strcmp(argv[3], "msix"))
-		p = pcidma->msix;
 	else if (!strcmp(argv[3], "local_buffer"))
 		p = pcidma->local_buffer;
 	else if (!strcmp(argv[3], "remote_buffer")) {
@@ -798,7 +803,7 @@ _err:
 	fprintf(stderr,
 		"dump correct format:\n"
 		"\t dump [pf idx] [vf idx] "
-		"[reg config msix local_buffer remote_buffer] "
+		"[reg config local_buffer remote_buffer] "
 		"[length]\n");
 	return err;
 
@@ -873,12 +878,40 @@ static int pciep_list(int argc, char *argv[])
 	return 0;
 }
 
+static int pciep_msix(int argc, char *argv[])
+{
+	int pf_idx, ep_idx, msix;
+	struct pciep_dma_dev *pcidma;
+
+	if (argc < 4) {
+		fprintf(stderr,
+			"msix correct format:\n"
+			"\t msix [pf idx] [vf idx] [msix entry]\n");
+		return -EINVAL;
+	}
+
+	pf_idx = strtoul(argv[1], 0, 0);
+	ep_idx = strtoul(argv[2], 0, 0);
+	msix = strtoul(argv[3], 0, 0);
+
+	pcidma = pciep_find(pf_idx, ep_idx);
+	if (!pcidma) {
+		fprintf(stderr, "pf idx or vf idx is wrong\n");
+		return -EINVAL;
+	}
+
+	pcidma_send_msix(pcidma, msix);
+
+	return 0;
+}
+
 cli_cmd(help, pciep_cli_help);
 cli_cmd(info, pciep_info);
 cli_cmd(dump, pciep_dump);
 cli_cmd(add, pciep_add);
 cli_cmd(rm, pciep_rm);
 cli_cmd(list, pciep_list);
+cli_cmd(msix, pciep_msix);
 
 int main(int argc, char *argv[])
 {
