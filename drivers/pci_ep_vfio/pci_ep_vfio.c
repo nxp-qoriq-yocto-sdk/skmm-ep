@@ -185,27 +185,25 @@ void vfio_pci_ep_info(struct pci_ep *ep)
 		vfio_pci_ep_get_win(ep, win);
 	}
 
-	printf("PCI EP device %s info:\n type: %s\n",
-		ep->name,
-		ep->info.type == PCI_EP_TYPE_PF ? "PF" : "VF");
+	printf("PCI EP device %s info:\n", ep->name);
 
 	printf("\nOutbound windows:\n");
 	for (i = 0; i < ep->info.ow_num; i++) {
 		win = &ep->ow[i];
 		printf(
 		       "Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
-		       "attr:0x%x  vfio_off:0x%llx\n",
+		       "attr:0x%x\n",
 			win->idx, win->cpu_addr, win->pci_addr, win->size,
-			win->attr, win->offset);
+			win->attr);
 	}
 
 	for (i = 0; i < ep->info.vf_ow_num; i++) {
 		win = &ep->vfow[i];
 		printf(
 		       "VF Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
-		       "attr:0x%x  vfio_off:0x%llx\n",
+		       "attr:0x%x\n",
 			win->idx, win->cpu_addr, win->pci_addr, win->size,
-			win->attr, win->offset);
+			win->attr);
 		}
 
 
@@ -214,29 +212,24 @@ void vfio_pci_ep_info(struct pci_ep *ep)
 		win = &ep->iw[i];
 		printf(
 		       "Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
-		       "attr:0x%x  vfio_off:0x%llx\n",
+		       "attr:0x%x\n",
 			win->idx, win->cpu_addr, win->pci_addr, win->size,
-			win->attr, win->offset);
+			win->attr);
 	}
 
 	for (i = 0; i < ep->info.vf_iw_num; i++) {
 		win = &ep->vfiw[i];
 		printf(
 		       "VF Win%d: cpu_addr:0x%llx pci_addr:0x%llx size:0x%llx "
-		       "attr:0x%x  vfio_off:0x%llx\n",
+		       "attr:0x%x\n",
 			win->idx, win->cpu_addr, win->pci_addr, win->size,
-			win->attr, win->offset);
+			win->attr);
 		}
 
 	printf("\nRegisters window:\n");
 	win = &ep->reg;
-	printf("\tcpu_addr:0x%llx size:0x%llx vfio_off:0x%llx\n",
-		win->cpu_addr, win->size, win->offset);
-
-	printf("\n PCI configurations window:\n");
-	win = &ep->config;
-	printf("\tcpu_addr:0x%llx size:0x%llx vfio_off:0x%llx\n",
-		win->cpu_addr, win->size, win->offset);
+	printf("\tcpu_addr:0x%llx size:0x%llx\n",
+		win->cpu_addr, win->size);
 }
 
 static int vfio_connect_container(struct vfio_us_group *group)
