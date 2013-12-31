@@ -187,9 +187,6 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 	rwcfg = &config->rwcfg;
 
 	bar = rwcfg->bar64;
-	PCIEP_DBG("\nstart a test\n"
-		  "\tremote addr:%llx, loop:0x%d  size:%dB\n",
-		  bar, rwcfg->loop, rwcfg->size);
 
 	if (rwcfg->loop == 0 || rwcfg->size == 0 ||
 	    rwcfg->size > BUFFER_WIN_SIZE)
@@ -203,7 +200,7 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 
 	remote = pcidma->out_mem_win->cpu_addr + offset;
 
-	buf = __dma_mem_memalign(rwcfg->size, rwcfg->size);
+	buf = __dma_mem_memalign(BUFFER_WIN_SIZE, rwcfg->size);
 	if (!buf) {
 		error(0, 0, "failed to allocate dma mem %dB\n", rwcfg->size);
 		goto _err;
@@ -219,6 +216,10 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 		src = remote;
 	} else
 		goto _err;
+
+	PCIEP_DBG("\nstart a test\n");
+	PCIEP_DBG("\t src addr:%llx dest addr:%llx loop:0x%d size:%dB\n",
+		  src, dest, rwcfg->loop, rwcfg->size);
 
 	atb_clock = malloc(sizeof(*atb_clock));
 	if (!atb_clock) {
@@ -239,8 +240,9 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 
 	rwcfg->result64 = (u64)rwcfg->size * 8 * rwcfg->loop * atb_multiplier /
 			atb_clock_total(atb_clock);
-	PCIEP_DBG("\ttest result:%lldbps\n", rwcfg->result64);
+	PCIEP_DBG("\ttest result:%lldMbps\n", rwcfg->result64/1024/1024);
 
+	__dma_mem_free(buf);
 	free(atb_clock);
 
 	return PCIDMA_STATUS_DONE;
@@ -969,6 +971,7 @@ int main(int argc, char *argv[])
 		goto leave;
 	}
 	fsl_dma_chan_basic_direct_init(dmadevs);
+	fsl_dma_chan_bwc(dmadevs, DMA_BWC_1024);
 
 	/* start workers for test */
 	workers_auto_new(worker_num);
