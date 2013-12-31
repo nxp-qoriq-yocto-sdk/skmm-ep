@@ -36,7 +36,7 @@
 #include <usdpaa/of.h>
 #include <internal/of.h>
 #include <linux/vfio.h>
-#include <linux/fsl_pci_ep_vfio.h>
+#include <usdpaa/fsl_pci_ep_vfio.h>
 
 struct vfio_us_container {
 	int fd;
