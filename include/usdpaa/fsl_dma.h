@@ -32,6 +32,10 @@
 #ifndef FSL_DMA_H
 #define FSL_DMA_H
 
+#define FSL_DMA_CON_NUM 3 /* Max DMA contoller number */
+#define FSL_DMA_CH_CON 8 /* Max DMA channel number per controller */
+#define FSL_DMA_CH_NUM FSL_DMA_CH_CON * FSL_DMA_CH_CON
+
 enum {
 	DMA_BWC_1,
 	DMA_BWC_2,

@@ -283,7 +283,9 @@ int fsl_dma_chain_basic_start(struct dma_ch *dma_ch,
 	 * [CDSM] = 1	Writing link descriptor start dma
 	 * [CTM] = 0		Configure dma to chain mode
 	 */
-	reg = ~DMA_MR_XFE_EN & DMA_MR_CDSM_EN & ~DMA_MR_CTM_EN;
+	reg = (in_be32(&dma_ch->regs->mr) & (~DMA_MR_XFE_EN) & (~DMA_MR_CTM_EN))
+		| DMA_MR_CDSM_EN;
+
 	if (link_data->seg_interrupt_en)
 		reg |= DMA_MR_EOSIE_EN;
 	if (link_data->link_interrupt_en)
@@ -303,7 +305,9 @@ int fsl_dma_chain_basic_start(struct dma_ch *dma_ch,
 	/* Start dma chain mode */
 	out_be32(&dma_ch->regs->eclndar, link_dsc_phys >> 32);
 	__sync_synchronize();
+
 	out_be32(&dma_ch->regs->clndar, link_dsc_phys & DMA_CLNDAR_CLNDA_MASK);
+	__sync_synchronize();
 
 	return 0;
 }

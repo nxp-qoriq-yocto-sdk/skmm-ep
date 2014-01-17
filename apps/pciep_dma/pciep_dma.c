@@ -40,6 +40,13 @@
 #include "atb_clock.h"
 #include "pciep_dma_cfg.h"
 
+#define ENABLE_CHAIN_MODE
+#define ENABLE_MULTI_CHAIN_MODE
+#undef LOCAL_MEM_TEST
+#define ENABLE_PCIEP_DEBUG
+#define DMA_CH_USE 16 /* How many channel will be used */
+
+
 enum worker_msg_type {
 	worker_msg_none = 0,
 	worker_msg_quit,
@@ -120,7 +127,8 @@ static int64_t atb_multiplier;
 static unsigned long ncpus;
 static unsigned long cpu_idx;
 
-static struct dma_ch *dmadevs;
+static struct dma_ch *dmadevs[DMA_CH_USE];
+static unsigned int ch_used = DMA_CH_USE;
 
 static LIST_HEAD(workers);
 
@@ -174,14 +182,212 @@ void pcidma_send_msix(struct pciep_dma_dev *pcidma, int idx)
 		 MSIX_TD_OP_TRIGGER);
 }
 
+static u64 dma_direct_mode_test(struct dma_ch *dmadev,
+				dma_addr_t src_phys, dma_addr_t dest_phys,
+				uint32_t len, uint32_t loop)
+{
+	struct atb_clock *atb_clock = NULL;
+	int i;
+	u64 result64;
+
+	atb_clock = malloc(sizeof(*atb_clock));
+	if (!atb_clock) {
+		error(0, 0, "failed to initialize atb_clock!\n");
+		return 0;
+	}
+	atb_clock_init(atb_clock);
+
+	fsl_dma_chan_basic_direct_init(dmadev);
+
+	fsl_dma_chan_bwc(dmadev, DMA_BWC_1024);
+
+	for (i = 0; i < loop; i++) {
+		atb_clock_start(atb_clock);
+		fsl_dma_direct_start(dmadev, src_phys, dest_phys, len);
+		if (fsl_dma_wait(dmadev) < 0) {
+			error(0, 0, "dma task error!\n");
+			goto _err;
+		}
+		atb_clock_stop(atb_clock);
+	}
+
+	result64 = len * 8 * loop * atb_multiplier /
+		atb_clock_total(atb_clock);
+	PCIEP_DBG("\ttest direct mode result:%lldMbps\n", result64/1024/1024);
+	return result64;
+_err:
+	free(atb_clock);
+	return 0;
+}
+
+static int dma_chain_mode_test(struct dma_ch *dmadev, dma_addr_t src_phys,
+				dma_addr_t dest_phys, uint32_t len)
+{
+	struct atb_clock *atb_clock = NULL;
+	struct dma_link_setup_data *link_data = NULL;
+	struct dma_link_dsc *link_dsc = NULL;
+	u64 link_dsc_phy, result64 = 0;
+	int max_count, count;
+	int i;
+
+	max_count = 32 * 1024; /* BUFFER_WIN_SIZE / len; */
+
+	atb_clock = malloc(sizeof(*atb_clock));
+	if (!atb_clock) {
+		error(0, 0, "failed to initialize atb_clock!\n");
+		return 0;
+	}
+	atb_clock_init(atb_clock);
+
+	link_data = malloc(sizeof(*link_data) * max_count);
+	if (!link_data) {
+		error(0, 0,"can not allocate memeory for link_data\n");
+		goto _err;
+	}
+
+	link_dsc = __dma_mem_memalign(BUFFER_WIN_SIZE, BUFFER_WIN_SIZE);
+	if (!link_dsc) {
+		error(0, 0, "failed to allocate dma mem for link_dsc\n");
+		goto _err;
+	}
+	link_dsc_phy = __dma_mem_vtop(link_dsc);
+
+	fsl_dma_chan_bwc(dmadev, DMA_BWC_1024);
+	for (count = 1; count <= max_count; count = count * 2) {
+		for (i = 0; i < count; i++) {
+			link_data[i].byte_count = len;
+			link_data[i].src_addr = src_phys /* + i * len */;
+			link_data[i].dst_addr = dest_phys /* + i * len */;
+			link_data[i].dst_snoop_en = 1;
+			link_data[i].src_snoop_en = 1;
+			link_data[i].dst_nlwr = 0;
+			link_data[i].dst_stride_en = 0;
+			link_data[i].src_stride_en = 0;
+			link_data[i].dst_stride_dist = 0;
+			link_data[i].src_stride_dist = 0;
+			link_data[i].dst_stride_size = 0;
+			link_data[i].src_stride_size = 0;
+			link_data[i].err_interrupt_en = 0;
+			link_data[i].seg_interrupt_en = 0;
+			link_data[i].link_interrupt_en = 0;
+		}
+		fsl_dma_chain_link_build(link_data, link_dsc,
+				link_dsc_phy, count);
+
+		atb_clock_init(atb_clock);
+		atb_clock_start(atb_clock);
+		fsl_dma_chain_basic_start(dmadev, link_data, link_dsc_phy);
+		if (fsl_dma_wait(dmadev) < 0) {
+			error(0, 0, "dma task error!\n");
+			goto _err;
+		}
+		atb_clock_stop(atb_clock);
+
+		result64 = (u64)len * 8 * count * atb_multiplier /
+				atb_clock_total(atb_clock);
+		PCIEP_DBG("\ttest chain mode(%d dscs) result:%lldMbps\n",
+			  count, result64/1024/1024);
+	}
+
+	return result64;
+_err:
+	free(atb_clock);
+	free(link_data);
+	if (link_dsc)
+		__dma_mem_free(link_dsc);
+	return 0;
+}
+
+static int dma_multichain_mode_test(struct dma_ch *dmadev, dma_addr_t src_phys,
+				dma_addr_t dest_phys, uint32_t len)
+{
+	struct atb_clock *atb_clock = NULL;
+	struct dma_link_setup_data *link_data = NULL;
+	struct dma_link_dsc *link_dsc = NULL;
+	u64 link_dsc_phy, result64 = 0;
+	int max_count, count;
+	int i, j;
+
+	max_count = 32 * 1024; /* BUFFER_WIN_SIZE / len; */
+
+	atb_clock = malloc(sizeof(*atb_clock));
+	if (!atb_clock) {
+		error(0, 0, "failed to initialize atb_clock!\n");
+		return 0;
+	}
+	atb_clock_init(atb_clock);
+
+	link_data = malloc(sizeof(*link_data) * max_count);
+	if (!link_data) {
+		error(0, 0,"can not allocate memeory for link_data\n");
+		goto _err;
+	}
+
+	link_dsc = __dma_mem_memalign(BUFFER_WIN_SIZE, BUFFER_WIN_SIZE);
+	if (!link_dsc) {
+		error(0, 0, "failed to allocate dma mem for link_dsc\n");
+		goto _err;
+	}
+	link_dsc_phy = __dma_mem_vtop(link_dsc);
+	for (i = 0; i < ch_used; i++)
+		fsl_dma_chan_bwc(dmadevs[i], DMA_BWC_1024);
+
+	for (count = 1; count <= max_count; count = count * 2) {
+		for (i = 0; i < count; i++) {
+			link_data[i].byte_count = len;
+			link_data[i].src_addr = src_phys /* + i * len */;
+			link_data[i].dst_addr = dest_phys /* + i * len */;
+			link_data[i].dst_snoop_en = 1;
+			link_data[i].src_snoop_en = 1;
+			link_data[i].dst_nlwr = 0;
+			link_data[i].dst_stride_en = 0;
+			link_data[i].src_stride_en = 0;
+			link_data[i].dst_stride_dist = 0;
+			link_data[i].src_stride_dist = 0;
+			link_data[i].dst_stride_size = 0;
+			link_data[i].src_stride_size = 0;
+			link_data[i].err_interrupt_en = 0;
+			link_data[i].seg_interrupt_en = 0;
+			link_data[i].link_interrupt_en = 0;
+		}
+		fsl_dma_chain_link_build(link_data, link_dsc,
+				link_dsc_phy, count);
+
+		for (j = 1; j <= ch_used; j++) {
+			atb_clock_init(atb_clock);
+			atb_clock_start(atb_clock);
+			for (i = 0; i < j; i++)
+				fsl_dma_chain_basic_start(dmadevs[i], link_data, link_dsc_phy);
+			for (i = 0; i < j; i++) {
+				if (fsl_dma_wait(dmadevs[i]) < 0) {
+					error(0, 0, "dma channel %d task error!\n", i);
+					goto _err;
+				}
+			}
+			atb_clock_stop(atb_clock);
+
+			result64 = (u64)len * 8 * count * j * atb_multiplier /
+				atb_clock_total(atb_clock);
+			PCIEP_DBG("\ttest chain mode(%d dscs, %d channels) result:%lldMbps\n",
+			  count, j, result64/1024/1024);
+		}
+	}
+
+	return result64;
+_err:
+	free(atb_clock);
+	free(link_data);
+	if (link_dsc)
+		__dma_mem_free(link_dsc);
+	return 0;
+}
+
 static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 {
 	volatile struct pcidma_config *config;
 	volatile struct rw_config *rwcfg;
 	uint64_t bar, offset, local, remote, src, dest;
-	int i;
 	void *buf = NULL;
-	struct atb_clock *atb_clock = NULL;
 
 	config = pcidma->config;
 	rwcfg = &config->rwcfg;
@@ -200,13 +406,22 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 
 	remote = pcidma->out_mem_win->cpu_addr + offset;
 
-	buf = __dma_mem_memalign(BUFFER_WIN_SIZE, rwcfg->size);
+	buf = __dma_mem_memalign(BUFFER_WIN_SIZE, BUFFER_WIN_SIZE);
 	if (!buf) {
 		error(0, 0, "failed to allocate dma mem %dB\n", rwcfg->size);
 		goto _err;
 	}
 	memset(buf, 0xa5, rwcfg->size);
 	local = __dma_mem_vtop(buf);
+
+#ifdef LOCAL_MEM_TEST
+	buf = __dma_mem_memalign(BUFFER_WIN_SIZE, BUFFER_WIN_SIZE);
+	if (!buf) {
+		error(0, 0, "failed to allocate dma mem %dB\n", rwcfg->size);
+		goto _err;
+	}
+	remote = __dma_mem_vtop(buf);
+#endif
 
 	if (rwcfg->type == RW_TYPE_WRITE) {
 		dest = remote;
@@ -218,41 +433,26 @@ static int pcidma_test(struct pciep_dma_dev *pcidma, struct dma_ch *dmadev)
 		goto _err;
 
 	PCIEP_DBG("\nstart a test\n");
-	PCIEP_DBG("\t src addr:%llx dest addr:%llx loop:0x%d size:%dB\n",
+	PCIEP_DBG("\tsrc addr:%llx dest addr:%llx loop:0x%d size:%dB\n",
 		  src, dest, rwcfg->loop, rwcfg->size);
 
-	atb_clock = malloc(sizeof(*atb_clock));
-	if (!atb_clock) {
-		error(0, 0, "failed to initialize atb_clock!\n");
-		goto _err;
-	}
-	atb_clock_init(atb_clock);
-
-	for (i = 0; i < rwcfg->loop; i++) {
-		atb_clock_start(atb_clock);
-		fsl_dma_direct_start(dmadev, src, dest, rwcfg->size);
-		if (fsl_dma_wait(dmadev) < 0) {
-			error(0, 0, "dma task error!\n");
-			goto _err;
-		}
-		atb_clock_stop(atb_clock);
-	}
-
-	rwcfg->result64 = (u64)rwcfg->size * 8 * rwcfg->loop * atb_multiplier /
-			atb_clock_total(atb_clock);
-	PCIEP_DBG("\ttest result:%lldMbps\n", rwcfg->result64/1024/1024);
+	rwcfg->result64 = dma_direct_mode_test(dmadev, src, dest,
+					       rwcfg->size, rwcfg->loop);
+#ifdef ENABLE_CHAIN_MODE
+	dma_chain_mode_test(dmadev, src, dest, rwcfg->size);
+#endif
+#ifdef ENABLE_MULTI_CHAIN_MODE
+	dma_multichain_mode_test(dmadev, src, dest, rwcfg->size);
+#endif
 
 	__dma_mem_free(buf);
-	free(atb_clock);
-
-	return PCIDMA_STATUS_DONE;
+	buf = NULL;
+	if (rwcfg->result64)
+		return PCIDMA_STATUS_DONE;
 
 _err:
 	if (buf)
 		__dma_mem_free(buf);
-
-	free(atb_clock);
-	rwcfg->result64 = 0;
 
 	return PCIDMA_STATUS_ERROR;
 }
@@ -288,7 +488,7 @@ static void *worker_fn(void *__worker)
 	while (process_msg(worker)) {
 		if (config->command == PCIDMA_CMD_START) {
 			worker->status = config->status = PCIDMA_STATUS_BUSY;
-			status = pcidma_test(pcidma, dmadevs);
+			status = pcidma_test(pcidma, dmadevs[0]);
 			worker->status = config->status = status;
 			config->command = PCIDMA_CMD_NONE;
 		}
@@ -923,6 +1123,7 @@ int main(int argc, char *argv[])
 	const struct cli_table_entry *cli_cmd;
 	struct pci_controller *controller = NULL;
 	struct worker *worker, *tmpworker;
+	int i;
 
 	rt = of_init();
 	if (rt) {
@@ -964,14 +1165,22 @@ int main(int argc, char *argv[])
 	if (pci_controller_init(controller, controller_idx))
 		goto leave;
 
-	/* DMA init */
-	rt = fsl_dma_chan_init(&dmadevs, 0, 0);
-	if (rt < 0) {
-		error(0, -rt, "failed to initialize DMA\n");
-		goto leave;
+	/* DMA channel init */
+	for (i = 0; i < DMA_CH_USE; i++) {
+		if (i >= FSL_DMA_CH_NUM) {
+			error(0, 0, "set channel num %d > dma max channel %d\n",
+				DMA_CH_USE, FSL_DMA_CH_NUM);
+			error(0, 0, "now %d channels can be used\n", FSL_DMA_CH_NUM);
+			ch_used = FSL_DMA_CH_NUM;
+			break;
+		}
+		rt = fsl_dma_chan_init(&dmadevs[i], i / FSL_DMA_CH_CON, i % FSL_DMA_CH_CON);
+		if (rt < 0) {
+			error(0, -rt, "failed to initialize DMA channel %d\n", i);
+			goto leave;
+		}
+		fsl_dma_chan_bwc(dmadevs[i], DMA_BWC_1024);
 	}
-	fsl_dma_chan_basic_direct_init(dmadevs);
-	fsl_dma_chan_bwc(dmadevs, DMA_BWC_1024);
 
 	/* start workers for test */
 	workers_auto_new(worker_num);
@@ -1030,7 +1239,8 @@ int main(int argc, char *argv[])
 leave:
 	of_finish();
 
-	fsl_dma_chan_finish(dmadevs);
+	for (i = 0; i < ch_used; i++)
+		fsl_dma_chan_finish(dmadevs[i]);
 
 	if (controller)
 		pci_controller_free(controller);
