@@ -99,7 +99,7 @@ int fsl_dma_chan_init(struct dma_ch **dma_ch, uint8_t dma_id, uint8_t ch_id)
 	}
 	dma_uio->regs = mmap(0, regs_size, PROT_READ | PROT_WRITE,
 				MAP_SHARED, dma_uio->fd, 0);
-	if (!dma_uio->regs) {
+	if (dma_uio->regs == MAP_FAILED) {
 		error(0, errno, "%s(): dma register", __func__);
 		err = -errno;
 		goto err_dma_mmap;
