@@ -101,7 +101,7 @@ static int setup_law_for_plt_sram(phys_addr_t l2sram, u32 *size)
 	return -EPERM;
 }
 
-va_addr_t *fsl_mem_init(void)
+va_addr_t *fsl_mem_init(phys_addr_t l2_sram_addr)
 {
 	char sram_name[NAME_MAX];
 	int sram_fd;
@@ -140,7 +140,7 @@ va_addr_t *fsl_mem_init(void)
 		return NULL;
 	}
 
-	sram_phys_addr = L2_SRAM_ADDR;
+	sram_phys_addr = l2_sram_addr;
 	sram_size = L2_SRAM_SIZE;
 	fsl_init_l2ctrl(sram_phys_addr, sram_size);
 	setup_law_for_plt_sram(sram_phys_addr, &sram_size);

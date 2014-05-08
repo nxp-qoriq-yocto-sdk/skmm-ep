@@ -57,7 +57,7 @@
  */
 #define L2_SRAM_SIZE		(256 * 1024)
 #define PLATFORM_SRAM_SIZE	(512 * 1024)
-#define L2_SRAM_ADDR		0xfffd00000
+#define L2_SRAM_ADDR		0xfffa00000
 
 /* Sec engine related macros */
 #define SEC_JR_DEPTH		(128)

@@ -45,7 +45,7 @@ inline phys_addr_t va_to_pa(va_addr_t addr)
 	return (phys_addr_t)__dma_mem_vtop((void *)addr);
 }
 
-va_addr_t *fsl_mem_init(void)
+va_addr_t *fsl_mem_init(phys_addr_t l2_sram_addr)
 {
 	/* - map DMA mem */
 	dma_mem_generic = dma_mem_create(DMA_MAP_FLAG_ALLOC, NULL,

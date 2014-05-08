@@ -1777,6 +1777,19 @@ int main(int argc, char *argv[])
 	c_mem_layout_t *c_mem = NULL;
 	phys_addr_t p_addr = 0;
 	phys_addr_t p_aligned_addr = 0;
+	phys_addr_t l2_sram_addr;
+
+	if(argc < 2) {
+		l2_sram_addr = L2_SRAM_ADDR;
+		printf("The default l2_sram_addr is 0x%llx\n", l2_sram_addr);
+	} else if (argc == 2) {
+		l2_sram_addr = (phys_addr_t)strtoll(argv[1], NULL, 16);
+		printf("The l2_sram_addr is 0x%llx\n", l2_sram_addr);
+	} else {
+		l2_sram_addr = L2_SRAM_ADDR;
+		printf("Too much arguments! The default l2_sram_addr"
+			" is 0x%llx\n", l2_sram_addr);
+	}
 
 	mkdir(".key", S_IRUSR | S_IWUSR);
 
@@ -1797,7 +1810,7 @@ START:
 	 * there is a hole between l2sram and platform sram,
 	 * the size is 256k.
 	 */
-	l2_cursor = (u32) fsl_mem_init();
+	l2_cursor = (u32) fsl_mem_init(l2_sram_addr);
 	plt_cursor = l2_cursor + DEFAULT_EP_POOL_SIZE + HOLE_SIZE;
 	p_cursor = plt_cursor + TOTAL_CARD_MEMORY;
 	p_cursor = ALIGN_TO_L1_CACHE_LINE_REV(p_cursor);
