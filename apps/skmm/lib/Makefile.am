@@ -46,6 +46,11 @@ skmm_cache_SOURCES := skmm_cache.c
 else
 skmm_mem_SOURCES := skmm_ddr.c
 endif
+skmm_sec_CFLAGS := -mno-strict-align
+skmm_mem_CFLAGS := -mno-strict-align
+skmm_sec_blob_CFLAGS := -mno-strict-align
+skmm_memmgr_CFLAGS := -mno-strict-align
+
 skmm_sec_blob_SOURCES := skmm_sec_blob.c
 skmm_memmgr_SOURCES := skmm_memmgr.c
 skmm_uio_SOURCES := skmm_uio.c
