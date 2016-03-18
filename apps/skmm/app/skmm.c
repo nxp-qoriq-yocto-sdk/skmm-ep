@@ -1397,14 +1397,13 @@ static void ring_processing_perf(c_mem_layout_t *c_mem)
 LOOP:
 	cnt = rp->r_s_c_cntrs->jobs_added - rp->cntrs->jobs_processed;
 
-	if (!cnt)
-		goto DEQ;
+	if (cnt) {
+		print_debug("%s( ): Count of jobs added %d\n", __func__, cnt);
 
-	print_debug("%s( ): Count of jobs added %d\n", __func__, cnt);
+		/* Enqueue jobs to sec engine */
+		totcount += enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
+	}
 
-	/* Enqueue jobs to sec engine */
-	totcount += enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
-DEQ:
 	if (!totcount)
 		goto NEXTRING;
 
