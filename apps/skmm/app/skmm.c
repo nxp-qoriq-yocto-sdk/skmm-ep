@@ -1404,16 +1404,16 @@ LOOP:
 		totcount += enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
 	}
 
-	if (!totcount)
-		goto NEXTRING;
+	if (totcount) {
 
-	/* Dequeue jobs from sec engine */
-	deqcnt = dequeue_from_sec(&deq_sec, &resp_r);
-	totcount  -= deqcnt;
-	/* Check interrupt */
-	check_intr(resp_r, deqcnt, &processedcount);
+		/* Dequeue jobs from sec engine */
+		deqcnt = dequeue_from_sec(&deq_sec, &resp_r);
+		totcount  -= deqcnt;
 
-NEXTRING:
+		/* Check interrupt */
+		check_intr(resp_r, deqcnt, &processedcount);
+	}
+
 	rp = rp->next;
 	goto LOOP;
 }
