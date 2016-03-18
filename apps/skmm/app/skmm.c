@@ -1394,28 +1394,28 @@ static void ring_processing_perf(c_mem_layout_t *c_mem)
 	u32 totcount = 0;
 	u32 processedcount = 0;
 
-LOOP:
-	cnt = rp->r_s_c_cntrs->jobs_added - rp->cntrs->jobs_processed;
+	while (1) {
+		cnt = rp->r_s_c_cntrs->jobs_added - rp->cntrs->jobs_processed;
 
-	if (cnt) {
-		print_debug("%s( ): Count of jobs added %d\n", __func__, cnt);
+		if (cnt) {
+			print_debug("%s( ): Count of jobs added %d\n", __func__, cnt);
 
-		/* Enqueue jobs to sec engine */
-		totcount += enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
+			/* Enqueue jobs to sec engine */
+			totcount += enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
+		}
+
+		if (totcount) {
+
+			/* Dequeue jobs from sec engine */
+			deqcnt = dequeue_from_sec(&deq_sec, &resp_r);
+			totcount  -= deqcnt;
+
+			/* Check interrupt */
+			check_intr(resp_r, deqcnt, &processedcount);
+		}
+
+		rp = rp->next;
 	}
-
-	if (totcount) {
-
-		/* Dequeue jobs from sec engine */
-		deqcnt = dequeue_from_sec(&deq_sec, &resp_r);
-		totcount  -= deqcnt;
-
-		/* Check interrupt */
-		check_intr(resp_r, deqcnt, &processedcount);
-	}
-
-	rp = rp->next;
-	goto LOOP;
 }
 
 #else
