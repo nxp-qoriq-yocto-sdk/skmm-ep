@@ -1384,37 +1384,40 @@ static inline void wait_for_timeout(u64 usecs)
 #ifdef HIGH_PERF
 static void ring_processing_perf(c_mem_layout_t *c_mem)
 {
-	app_ring_pair_t     *rp      = c_mem->rsrc_mem->rps;
+	app_ring_pair_t     *recv_r  = c_mem->rsrc_mem->rps;
 	app_ring_pair_t     *resp_r  = c_mem->rsrc_mem->rps;
 	sec_engine_t        *enq_sec = c_mem->rsrc_mem->sec;
 	sec_engine_t        *deq_sec = c_mem->rsrc_mem->sec;
 
-	u32 cnt = 0;
-	u32 deqcnt = 0;
-	u32 totcount = 0;
+	u32 enq_cnt = 0;
+	u32 deq_cnt = 0;
+	u32 in_flight = 0;
 	u32 processedcount = 0;
 
 	while (1) {
-		cnt = rp->r_s_c_cntrs->jobs_added - rp->cntrs->jobs_processed;
+		enq_cnt = recv_r->r_s_c_cntrs->jobs_added -
+			recv_r->cntrs->jobs_processed;
 
-		if (cnt) {
-			print_debug("%s( ): Count of jobs added %d\n", __func__, cnt);
+		if (enq_cnt) {
+			print_debug("%s( ): Count of jobs added %d\n", __func__,
+				enq_cnt);
 
 			/* Enqueue jobs to sec engine */
-			totcount += enqueue_to_sec(&enq_sec, rp, resp_r, cnt);
+			in_flight += enqueue_to_sec(&enq_sec, recv_r, resp_r,
+				enq_cnt);
 		}
 
-		if (totcount) {
+		if (in_flight) {
 
 			/* Dequeue jobs from sec engine */
-			deqcnt = dequeue_from_sec(&deq_sec, &resp_r);
-			totcount  -= deqcnt;
+			deq_cnt = dequeue_from_sec(&deq_sec, &resp_r);
+			in_flight  -= deq_cnt;
 
 			/* Check interrupt */
-			check_intr(resp_r, deqcnt, &processedcount);
+			check_intr(resp_r, deq_cnt, &processedcount);
 		}
 
-		rp = rp->next;
+		recv_r = recv_r->next;
 	}
 }
 
