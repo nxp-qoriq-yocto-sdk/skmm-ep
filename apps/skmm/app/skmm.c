@@ -1313,14 +1313,10 @@ static inline u32 dequeue_from_sec(sec_engine_t **sec, app_ring_pair_t **r)
 {
 	sec_engine_t    *psec = *sec;
 	app_ring_pair_t *pr   = *r;
-	u32 resproom    = 0;
-	u32 secroom     = 0;
-	u32 room        = 0;
-
-	secroom = in_be32(&(psec->jr.regs->orsf));
-	resproom = pr->depth -
+	u32 resproom    = pr->depth -
 		(pr->cntrs->jobs_added - pr->r_s_c_cntrs->jobs_processed);
-	room = MIN(MIN(secroom, resproom), MAX_DEQ_BUDGET);
+	u32 secroom     = in_be32(&(psec->jr.regs->orsf));
+	u32 room        = MIN(MIN(secroom, resproom), MAX_DEQ_BUDGET);
 
 	print_debug("%s( ): secroom: %d, respring:%d resproom: %d, room : %d\n",
 			__func__, secroom, pr->id, resproom, room);
