@@ -1321,21 +1321,19 @@ static inline u32 dequeue_from_sec(sec_engine_t **sec, app_ring_pair_t **r)
 	print_debug("%s( ): secroom: %d, respring:%d resproom: %d, room : %d\n",
 			__func__, secroom, pr->id, resproom, room);
 
-	if (!secroom)
-		goto SECCHANGE;
-	if (!resproom)
-		goto RESPCHANGE;
+	if (!secroom) {
+		*sec = psec->next;
+		return 0;
+	}
+
+	if (!resproom) {
+		*r = pr->next;
+		return 0;
+	}
 
 	resp_ring_enqueue(&(psec->jr), pr, room);
 	*sec = psec->next;
 	*r   = pr->next;
-	goto RET;
-SECCHANGE:
-	*sec = psec->next;
-	goto RET;
-RESPCHANGE:
-	*r = pr->next;
-RET:
 	return room;
 }
 
