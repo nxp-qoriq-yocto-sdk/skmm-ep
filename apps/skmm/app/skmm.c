@@ -1409,6 +1409,19 @@ static void ring_processing_perf(c_mem_layout_t *c_mem)
 
 			/* Check interrupt */
 			check_intr(resp_r, deq_cnt, &processedcount);
+		} else {
+
+			if (resp_r->cntrs->jobs_added >
+				resp_r->r_s_c_cntrs->jobs_processed) {
+
+				print_debug("jobs added %d, jobs processed %d\n",
+					resp_r->cntrs->jobs_added,
+					resp_r->r_s_c_cntrs->jobs_processed);
+
+				raise_intr_app_ring(resp_r);
+			}
+
+			resp_r = resp_r->next;
 		}
 
 		recv_r = recv_r->next;
