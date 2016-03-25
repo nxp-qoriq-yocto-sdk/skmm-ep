@@ -107,7 +107,7 @@ static void mount_key_dir(void)
 {
 	int ret;
 
-	ret = system("mount -t jffs2 /dev/mtdblock4 .key");
+	ret = system("mount -t jffs2 /dev/mtdblock3 .key");
 	if (ret < 0) {
 		printf("ret :%d\n", ret);
 		exit(0);
